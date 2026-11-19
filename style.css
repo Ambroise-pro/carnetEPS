@@ -383,6 +383,10 @@ dialog label.check{flex-direction:row;align-items:center;gap:10px;color:var(--in
 .backup-banner strong{font-size:16px}.backup-banner span{flex:1;min-width:200px;font-size:14px}
 .error{color:var(--danger)!important;font-weight:600}
 
+/* ---------- Import des élèves, besoins particuliers ---------- */
+details.import .segmented{margin:4px 0 12px}
+.tag.needs{background:#e7defa;color:#3f2a73;white-space:normal;align-self:flex-start}
+
 /* ---------- Tablette portrait ---------- */
 @media (max-width:1023px){
   .sidebar{width:212px;padding-inline:10px}

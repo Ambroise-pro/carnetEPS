@@ -1,6 +1,6 @@
 // Numéro de version affiché dans l'application : l'incrémenter à chaque nouvelle livraison
 // (et le reporter dans sw.js pour renouveler le cache hors ligne).
-const APP_VERSION=21;
+const APP_VERSION=22;
 
 // ---------- Structure de l'application ----------
 const pages={home:'Tableau de bord',calendar:'Calendrier',sessions:'Séances',attendance:'Appel',classes:'Classes',students:'Élèves',groups:'Groupes',cycles:'Cycles',restrictions:'Inaptitudes',grades:'Évaluations',comments:'Appréciations',observations:'Observations',planning:'Paramètres du calendrier',absences:'Absences',settings:'Paramètres',student:'Fiche élève',session:'Séance',boards:'Tableaux',board:'Tableau',module:'Application',apps:'Applications',averages:'Moyennes',years:'Années scolaires',backup:'Sauvegardes'};
@@ -54,7 +54,7 @@ const enums={
 const fields={
  years:[['name','Année scolaire'],['start','Début','date'],['end','Fin','date']],
  classes:[['year','Année','years'],['name','Nom de la classe']],
- students:[['classId','Classe','classes'],['first','Prénom'],['last','Nom'],['sex','Sexe','sex']],
+ students:[['classId','Classe','classes'],['first','Prénom'],['last','Nom'],['sex','Sexe','sex'],['birth','Date de naissance','date'],['needs','Besoins particuliers (PAI, PAP…)']],
  groups:[['classId','Classe','classes'],['name','Nom du groupe']],
  cycles:[['classId','Classe','classes'],['name','Activité / cycle'],['start','Début','date'],['end','Fin','date']],
  sessions:[['classId','Classe','classes'],['date','Date','date'],['time','Heure de début','time'],['duration','Durée','duration','110'],['name','Contenu de séance']],
@@ -653,11 +653,11 @@ function renderCollection(k,parent){
   else{
    input=el('input','',l);input.type=type||'text';
    if(type==='number'){input.min=0;input.max=20;input.step='any';input.inputMode='decimal'}
-   if(type==='date'&&key!=='end')input.value=today();
+   if(type==='date'&&key!=='end'&&key!=='birth')input.value=today();
    if(def)input.value=def;
    if(k==='holidays'&&key==='name'){input.setAttribute('list','holiday-names');const dl=el('datalist','',l);dl.id='holiday-names';for(const v of ['Toussaint','Noël','Hiver','Printemps','Pont de l’Ascension','Été','Jour férié'])dl.append(new Option(v))}
   }
-  input.name=key;input.required=!(k==='sessions'&&key==='time')&&key!=='sex';
+  input.name=key;input.required=!(k==='sessions'&&key==='time')&&!['sex','birth','needs'].includes(key);
   if(old&&old[key]!=null)input.value=old[key];
  }
  const btns=el('div','',form,'form-actions');
@@ -721,7 +721,7 @@ function renderItem(k,row,list){
  const parts={
   years:[row.name,fmtDate(row.start)+' → '+fmtDate(row.end)+' · 1re semaine '+(row.firstWeek==='B'?'B':'A')],
   classes:[row.name,ref('years',row.year)+' · '+plural(pupilsOf(row.id).length,'élève')],
-  students:[label(row),[ref('classes',row.classId),row.sex==='F'?'Fille':row.sex==='G'?'Garçon':''].filter(Boolean).join(' · ')],
+  students:[label(row),[ref('classes',row.classId),row.sex==='F'?'Fille':row.sex==='G'?'Garçon':'',row.birth?ageOf(row.birth)+' ans':''].filter(Boolean).join(' · ')],
   groups:[row.name,ref('classes',row.classId)],
   cycles:[ref('classes',row.classId)+' · '+row.name,row.start?fmtDate(row.start,{day:'numeric',month:'short'})+' → '+fmtDate(row.end,{day:'numeric',month:'short'})+' · '+plural(cyc.length,'séance')+(cyc.length?' ('+cyc.filter(isStarted).length+' faites)':''):'Dates à définir : modifiez le cycle'],
   sessions:[sessionTitle(row),[fmtDate(row.date),timeRange(row),cycleText(row)].filter(Boolean).join(' · ')],
@@ -892,7 +892,8 @@ function renderStudent(id){
  avatar(p,head,'xl');
  const info=el('div','',head,'body');
  el('h2',label(p),info);
- el('span',(c?c.name:'Sans classe')+(y?' · '+y.name:''),info,'muted');
+ el('span',[c?c.name:'Sans classe',y?.name,p.sex==='F'?'Fille':p.sex==='G'?'Garçon':'',p.birth?'née'.slice(0,p.sex==='F'?3:2)+' le '+fmtDate(p.birth,{day:'numeric',month:'long',year:'numeric'})+' ('+ageOf(p.birth)+' ans)':''].filter(Boolean).join(' · '),info,'muted');
+ if(p.needs)el('span','Besoins particuliers : '+p.needs,info,'tag needs');
  const r=restrictionOf(id);if(r)el('span','Inaptitude jusqu’au '+fmtDate(r.end)+' · '+r.name,info,'tag warn');
  const ha=el('div','',head,'actions');
  button('Modifier',ha).onclick=()=>{editing={k:'students',id};location.hash='#students'};
@@ -1935,13 +1936,27 @@ function renderSearch(q){
  }
 }
 
-// ---------- Import PRONOTE ----------
+// ---------- Import des élèves : trombinoscope PRONOTE (PDF) ou liste PRONOTE (CSV) ----------
+// Les deux se complètent : un élève déjà présent dans la classe (même nom et prénom) est mis à jour, pas dupliqué.
+const plainNorm=v=>String(v??'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]/g,'');
+const nameKey=(classId,first,last)=>classId+'|'+plainNorm(first)+'|'+plainNorm(last);
+const studentByName=(classId,first,last)=>data.students.find(s=>nameKey(s.classId,s.first,s.last)===nameKey(classId,first,last));
+let importMode='csv';
 function importPanel(){
- const box=el('details','',view,'import');el('summary','Importer un trombinoscope PRONOTE (PDF)',box);
+ const box=el('details','',view,'import');el('summary','Importer des élèves (PRONOTE)',box);
+ const seg=el('div','',box,'segmented');seg.setAttribute('role','group');seg.setAttribute('aria-label','Type d’import');
+ for(const [v,t] of [['csv','Liste PRONOTE (CSV)'],['pdf','Trombinoscope PRONOTE (PDF)']]){const b=button(t,seg);b.setAttribute('aria-pressed',importMode===v);b.onclick=()=>{importMode=v;render();view.querySelector('details.import').open=true}}
  const f=el('div','',box,'fields');
  const target=select(el('label','Classe de destination',f),data.classes.map(c=>[c.id,label(c)]));if(classFilter)target.value=classFilter;
- const picker=el('input','',el('label','Fichier PDF',f));picker.type='file';picker.accept='application/pdf';
  const preview=el('div','',box);
+ if(importMode==='csv'){
+  el('p','Dans PRONOTE : liste des élèves de la classe › Exporter au format CSV. Sont repris : nom, prénom, sexe, date de naissance et besoins particuliers (PAI, PAP…).',box,'muted').style.order=-1;
+  const picker=el('input','',el('label','Fichier CSV',f));picker.type='file';picker.accept='.csv,text/csv,text/plain';
+  picker.onchange=async()=>{preview.replaceChildren();const file=picker.files[0];if(!file)return;
+   try{csvPreview(preview,parseStudentCSV(await readText(file)),()=>target.value)}catch(e){el('p',e.message||'Lecture impossible. Vérifiez le fichier CSV.',preview,'notice')}};
+  return;
+ }
+ const picker=el('input','',el('label','Fichier PDF',f));picker.type='file';picker.accept='application/pdf';
  picker.onchange=async()=>{
   preview.replaceChildren();const file=picker.files[0];if(!file)return;picker.disabled=true;
   try{
@@ -1958,16 +1973,76 @@ function importPanel(){
    el('button','Valider l’import',form,'primary');
    form.onsubmit=async e=>{
     e.preventDefault();const classId=target.value;
-    const selected=rows.filter(r=>r.include.checked).map(r=>({first:r.first.value.trim(),last:r.last.value.trim(),photo:r.photo,classId,id:crypto.randomUUID()}));
+    const selected=rows.filter(r=>r.include.checked).map(r=>({first:r.first.value.trim(),last:r.last.value.trim(),photo:r.photo}));
     if(selected.some(r=>!r.first||!r.last)){notify('Complétez le prénom et le nom de chaque fiche incluse.');return}
-    const identity=r=>JSON.stringify([r.classId,r.first.trim().toLowerCase(),r.last.trim().toLowerCase()]);
-    const known=new Set(data.students.map(identity));const fresh=selected.filter(r=>{const key=identity(r);if(known.has(key))return false;known.add(key);return true});
-    await transaction('students',t=>fresh.forEach(r=>t.objectStore('students').add(r)));await load();render();
-    const dup=selected.length-fresh.length;notify(plural(fresh.length,'fiche ajoutée','fiches ajoutées')+', '+plural(dup,'doublon ignoré','doublons ignorés')+'.');
+    let added=0,updated=0;const put=[];
+    for(const r of selected){const ex=studentByName(classId,r.first,r.last)||put.find(x=>nameKey(x.classId,x.first,x.last)===nameKey(classId,r.first,r.last));
+     if(ex){if(!ex.photo){put.push({...ex,photo:r.photo});updated++}}else{put.push({...r,classId,id:crypto.randomUUID()});added++}}
+    await transaction('students',t=>put.forEach(r=>t.objectStore('students').put(r)));await load();render();
+    notify(plural(added,'élève ajouté','élèves ajoutés')+(updated?', '+plural(updated,'photo ajoutée','photos ajoutées')+' à des élèves existants':'')+'.');
    };
   }catch{el('p','Lecture impossible. Vérifiez le format du PDF.',preview,'notice')}finally{picker.disabled=false}
  };
 }
+// Texte d'un fichier : UTF-8, sinon Windows-1252 (exports PRONOTE plus anciens).
+async function readText(file){const buf=await file.arrayBuffer();try{return new TextDecoder('utf-8',{fatal:true}).decode(buf)}catch{return new TextDecoder('windows-1252').decode(buf)}}
+function parseCSVRows(text){
+ text=text.replace(/^﻿/,'');const first=text.split(/\r?\n/,1)[0];
+ const sep=[';','\t',','].sort((a,b)=>first.split(b).length-first.split(a).length)[0],rows=[];let row=[],cell='',q=false;
+ for(let i=0;i<text.length;i++){const ch=text[i];
+  if(q){if(ch==='"'&&text[i+1]==='"'){cell+='"';i++}else if(ch==='"')q=false;else cell+=ch}
+  else if(ch==='"')q=true;else if(ch===sep){row.push(cell);cell=''}
+  else if(ch==='\n'||ch==='\r'){if(ch==='\r'&&text[i+1]==='\n')i++;row.push(cell);if(row.some(x=>x.trim()))rows.push(row);row=[];cell=''}
+  else cell+=ch}
+ row.push(cell);if(row.some(x=>x.trim()))rows.push(row);return rows;
+}
+// « NOM COMPOSÉ Prénom » : le nom est la suite de mots en majuscules (si tout est en majuscules, le dernier mot est le prénom).
+function splitPronoteName(full){
+ const w=String(full||'').trim().split(/\s+/).filter(Boolean);if(w.length<2)return {last:w[0]||'',first:''};
+ const upper=x=>/\p{L}/u.test(x)&&x===x.toLocaleUpperCase('fr');let i=0;while(i<w.length&&upper(w[i]))i++;
+ if(i===w.length)i=w.length-1;if(i===0)i=1;
+ const cap=s=>s.toLocaleLowerCase('fr').replace(/(^|[\s-])(\p{L})/gu,(m,a,b)=>a+b.toLocaleUpperCase('fr'));
+ const first=w.slice(i).join(' ');return {last:w.slice(0,i).join(' '),first:upper(first)?cap(first):first};
+}
+function parseStudentCSV(text){
+ const rows=parseCSVRows(text);if(rows.length<2)throw Error('Fichier vide ou illisible.');
+ const head=rows[0].map(x=>plainNorm(x)),col=(...re)=>head.findIndex(hd=>re.some(r=>r.test(hd)));
+ const cName=col(/^eleves?$/,/^nomprenom$/,/^nometprenom$/),cLast=col(/^nom$/),cFirst=col(/^prenoms?$/);
+ const cSex=col(/^sexe$/,/^genre$/),cBirth=col(/^nee?le$/,/^neele$/,/naissance/),cNeeds=col(/pai|pap|besoin|amenagement/);
+ if(cName<0&&(cLast<0||cFirst<0))throw Error('Colonne « Élèves » (ou « Nom » et « Prénom ») introuvable : utilisez l’export CSV de la liste des élèves de PRONOTE.');
+ // Besoins particuliers : colonne nommée PAI/PAP, sinon la colonne sans titre qui contient des informations (8e colonne de l'export PRONOTE)
+ let needs=cNeeds;if(needs<0){const blank=head.map((hd,i)=>!hd&&i>0?i:-1).filter(i=>i>=0);needs=blank.find(i=>rows.slice(1).some(r=>(r[i]||'').trim()))??(blank.includes(7)?7:-1)}
+ const date=v=>{const m=String(v||'').match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);return m?m[3]+'-'+m[2].padStart(2,'0')+'-'+m[1].padStart(2,'0'):''};
+ const sex=v=>/^f/i.test(String(v||'').trim())?'F':/^(m|g|h)/i.test(String(v||'').trim())?'G':'';
+ return rows.slice(1).map(r=>{const n=cName>=0?splitPronoteName(r[cName]):{last:(r[cLast]||'').trim(),first:(r[cFirst]||'').trim()};
+  return {last:n.last,first:n.first,sex:cSex>=0?sex(r[cSex]):'',birth:cBirth>=0?date(r[cBirth]):'',needs:needs>=0?(r[needs]||'').trim():''}}).filter(s=>s.last&&s.first);
+}
+function csvPreview(box,list,classOf){
+ if(!list.length){el('p','Aucun élève reconnu dans ce fichier.',box,'notice');return}
+ const status=s=>{const ex=studentByName(classOf(),s.first,s.last);if(!ex)return 'Nouveau';return ['sex','birth','needs'].some(k=>s[k]&&ex[k]!==s[k])?'Mise à jour':'Déjà à jour'};
+ el('h3',plural(list.length,'élève trouvé','élèves trouvés')+' · vérifiez puis importez',box);
+ const tb=el('table','',el('div','',box,'table-box flat'),'stats');
+ const hr=el('tr','',el('thead','',tb));for(const t of ['','Nom','Prénom','Sexe','Naissance','Besoins particuliers','Statut'])el('th',t,hr);
+ const body=el('tbody','',tb),checks=[];
+ const paint=()=>{body.replaceChildren();checks.length=0;
+  for(const s of list){const tr=el('tr','',body),c=el('input','',el('td','',tr));c.type='checkbox';c.checked=status(s)!=='Déjà à jour';checks.push(c);
+   el('td',s.last,tr);el('td',s.first,tr);el('td',s.sex==='F'?'Fille':s.sex==='G'?'Garçon':'—',tr);el('td',s.birth?fmtDate(s.birth,{day:'numeric',month:'numeric',year:'numeric'}):'',tr);
+   const n=el('td','',tr);if(s.needs)el('span',s.needs,n,'tag warn');el('td',status(s),tr,'muted')}};
+ paint();
+ const a=el('div','',box,'actions');
+ button('Importer les élèves cochés',a,'primary').onclick=async()=>{
+  const classId=classOf();if(!classId)return notify('Choisissez la classe de destination.');
+  let added=0,updated=0;const put=[];
+  list.forEach((s,i)=>{if(!checks[i]?.checked)return;const ex=studentByName(classId,s.first,s.last);
+   if(ex){const next={...ex};for(const k of ['sex','birth','needs'])if(s[k])next[k]=s[k];put.push(next);updated++}
+   else{put.push({id:crypto.randomUUID(),classId,first:s.first,last:s.last,...(s.sex?{sex:s.sex}:{}),...(s.birth?{birth:s.birth}:{}),...(s.needs?{needs:s.needs}:{})});added++}});
+  if(!put.length)return notify('Aucun élève coché.');
+  await transaction('students',t=>put.forEach(r=>t.objectStore('students').put(r)));await load();render();
+  notify(plural(added,'élève ajouté','élèves ajoutés')+(updated?', '+plural(updated,'élève mis à jour','élèves mis à jour'):'')+'.');
+ };
+}
+const ageOf=b=>{if(!b)return null;const d=new Date(b+'T12:00'),n=new Date();let a=n.getFullYear()-d.getFullYear();if(n.getMonth()<d.getMonth()||(n.getMonth()===d.getMonth()&&n.getDate()<d.getDate()))a--;return a};
+
 
 // ---------- Démarrage ----------
 window.onunhandledrejection=()=>notify('Opération interrompue. Vérifiez le stockage disponible.');
