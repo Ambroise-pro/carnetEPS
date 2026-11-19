@@ -503,7 +503,7 @@ function liveNotices(ev, s, mark, setStatus) {
   const out = [], isToday = ev.date === today();
   if (s.inapt) out.push(h('p', {class: 'notice'}, 'Inaptitude en cours : ' + s.inapt, !mark.status ? h('button', {type: 'button', class: 'small', onclick: () => setStatus('exempt')}, 'Dispensé') : null));
   if (isToday && s.attendance === 'Absent') out.push(h('p', {class: 'notice bad'}, 'Absent à l’appel du jour.', !mark.status ? h('button', {type: 'button', class: 'small', onclick: () => setStatus('absent')}, 'Marquer absent') : null));
-  else if (isToday && ['Certificat médical', 'Mot des parents'].includes(s.attendance)) out.push(h('p', {class: 'notice'}, s.attendance + ' à l’appel du jour.', !mark.status ? h('button', {type: 'button', class: 'small', onclick: () => setStatus('exempt')}, 'Dispensé') : null));
+  else if (isToday && (s.marks || [s.attendance]).some(m => ['Certificat médical', 'Inaptitude', 'Mot des parents'].includes(m))) out.push(h('p', {class: 'notice'}, (s.marks || [s.attendance]).filter(m => ['Certificat médical', 'Inaptitude', 'Mot des parents'].includes(m)).join(', ') + ' à l’appel du jour.', !mark.status ? h('button', {type: 'button', class: 'small', onclick: () => setStatus('exempt')}, 'Dispensé') : null));
   return out;
 }
 

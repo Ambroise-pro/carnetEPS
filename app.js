@@ -1,6 +1,6 @@
 // Numéro de version affiché dans l'application : l'incrémenter à chaque nouvelle livraison
 // (et le reporter dans sw.js pour renouveler le cache hors ligne).
-const APP_VERSION=24;
+const APP_VERSION=25;
 
 // ---------- Structure de l'application ----------
 const pages={home:'Tableau de bord',calendar:'Calendrier',sessions:'Séances',attendance:'Appel',classes:'Classes',students:'Élèves',groups:'Groupes',cycles:'Cycles',restrictions:'Inaptitudes',grades:'Évaluations',comments:'Appréciations',observations:'Observations',planning:'Paramètres du calendrier',absences:'Absences',settings:'Paramètres',student:'Fiche élève',session:'Séance',boards:'Tableaux',board:'Tableau',module:'Application',apps:'Applications',averages:'Moyennes',years:'Années scolaires',backup:'Sauvegardes'};
@@ -77,10 +77,21 @@ const statusInfo={
  'Retard':{k:'R',bg:'#f2c14e',fg:'#10261f',icon:'M12 7.5V12l3 2M12 20.5a8.5 8.5 0 1 0 0-17 8.5 8.5 0 0 0 0 17z'},
  'Oubli de tenue':{k:'T',bg:'#e8833a',fg:'#10261f',icon:'M9 3.5L3.5 6.5l2 4 2.5-1v10.5h8V9.5l2.5 1 2-4L15 3.5c-.5 1.6-1.6 2.5-3 2.5s-2.5-.9-3-2.5z'},
  'Oubli de chaussures':{k:'C',bg:'#7b4bc4',fg:'#fff',icon:'M3 17.5V8.5h4.5l1.5 3 4.5 1.5 6 1.5a1.5 1.5 0 0 1 1.5 1.5v1.5zM3 20.5h18M9 11.5l1-2M11.5 12.5l1-2'},
- 'Certificat médical':{k:'CM',bg:'#2f5bea',fg:'#fff',icon:'M9.5 3.5h5v6h6v5h-6v6h-5v-6h-6v-5h6z'},
+ 'Inaptitude':{k:'I',bg:'#2f5bea',fg:'#fff',icon:'M9.5 3.5h5v6h6v5h-6v6h-5v-6h-6v-5h6z'},
  'Mot des parents':{k:'MP',bg:'#0f7b74',fg:'#fff',icon:'M3.5 6.5h17v11h-17zM3.5 7l8.5 6 8.5-6'}
 };
 const statuses=Object.keys(statusInfo);
+// L'appel a deux volets : la présence (un seul choix) et les mentions complémentaires (plusieurs possibles).
+const PRESENCE=['Présent','Absent','Retard'],EXTRAS=statuses.filter(x=>!PRESENCE.includes(x));
+// Enregistrement : {status: présence, extras: 'Oubli de tenue,Mot des parents'} ; les anciens appels (une seule mention) restent lisibles.
+function attOf(sid,pid){
+ const a=data.attendance.find(x=>x.id===sid+'/'+pid);if(!a)return {presence:'Présent',extras:[]};
+ const norm=x=>x==='Certificat médical'?'Inaptitude':x;
+ const ex=(a.extras||'').split(',').map(norm).filter(x=>EXTRAS.includes(x));
+ const st=norm(a.status);
+ return PRESENCE.includes(st)?{presence:st,extras:ex}:{presence:'Présent',extras:[...new Set([st,...ex])].filter(x=>EXTRAS.includes(x))};
+}
+const marksOf=a=>[...(a.presence!=='Présent'?[a.presence]:[]),...a.extras];
 // Contenu pédagogique d'une séance (champs texte enregistrés sur la séance).
 const contentFields=[['objective','Objectifs','Ce que les élèves doivent apprendre ou améliorer'],['material','Matériel et organisation','Terrains, groupes, matériel à prévoir'],['warmup','Échauffement',''],['main','Situations d’apprentissage','Exercices, consignes, critères de réussite, variantes'],['end','Retour au calme / bilan',''],['notes','Notes après la séance','Ce qui a marché, à reprendre la prochaine fois']];
 const hasContent=s=>contentFields.some(([k])=>s?.[k]?.trim());
@@ -93,7 +104,7 @@ async function load(){await Promise.all(stores.map(k=>new Promise((ok,no)=>{cons
 function transaction(names,fn){return new Promise((ok,no)=>{const t=db.transaction(names,'readwrite');t.oncomplete=ok;t.onabort=()=>no(t.error);try{fn(t)}catch(e){t.abort();no(e)}})}
 // Ancien format d'appel (chaque élève renseigné) → nouveau format (présent par défaut, exceptions seulement).
 async function migrateAttendance(){
- const legacy=data.attendance.filter(a=>['Présent','Non renseigné','En retard','Excusé'].includes(a.status));
+ const legacy=data.attendance.filter(a=>['Non renseigné','En retard','Excusé'].includes(a.status)||(a.status==='Présent'&&!a.extras));
  if(!legacy.length)return;
  const called=new Set(data.attendance.filter(a=>a.status!=='Non renseigné').map(a=>a.sessionId));
  await transaction(['attendance','sessions'],t=>{
@@ -208,12 +219,14 @@ const alertRules=[
  {key:'abs',label:'absences',one:'absence',statuses:['Absent']},
  {key:'late',label:'retards',one:'retard',statuses:['Retard']},
  {key:'kit',label:'oublis de tenue ou de chaussures',one:'oubli de tenue ou de chaussures',statuses:['Oubli de tenue','Oubli de chaussures']},
- {key:'med',label:'certificats médicaux',one:'certificat médical',statuses:['Certificat médical']}
+ {key:'med',label:'inaptitudes à l’appel',one:'inaptitude à l’appel',statuses:['Inaptitude']}
 ];
 const defaultSettings={id:'app',absOn:'1',absMin:'3',absWindow:'4',lateOn:'0',lateMin:'3',lateWindow:'8',kitOn:'1',kitMin:'3',kitWindow:'8',medOn:'0',medMin:'2',medWindow:'cycle'};
 const settings=()=>({...defaultSettings,...data.settings.find(r=>r.id==='app')});
 const calledSessions=classId=>data.sessions.filter(s=>s.classId===classId&&active(s)&&isStarted(s)&&isCalled(s));
-const statusIn=(s,p)=>data.attendance.find(a=>a.id===s.id+'/'+p.id)?.status||'Présent';
+const marksIn=(s,p)=>marksOf(attOf(s.id,p.id));
+// Statut principal (présence, sinon première mention) : affichage compact et applications.
+const statusIn=(s,p)=>marksIn(s,p)[0]||'Présent';
 // Séances prises en compte par une fenêtre : N dernières, cycle en cours ou année scolaire.
 function windowSessions(classId,win){
  const list=calledSessions(classId).sort((a,b)=>byDate(b,a)),t=today();
@@ -228,7 +241,7 @@ function watchList(){
   for(const r of alertRules)if(cfg[r.key+'On']==='1')wins[r.key]=windowSessions(c.id,cfg[r.key+'Window']);
   for(const p of pupilsOf(c.id))for(const r of alertRules){
    const w=wins[r.key];if(!w)continue;
-   const n=w.list.filter(s=>r.statuses.includes(statusIn(s,p))).length;
+   const n=w.list.filter(s=>marksIn(s,p).some(m=>r.statuses.includes(m))).length;
    if(n>=Number(cfg[r.key+'Min']))out.push({p,text:plural(n,r.one,r.label)+' '+w.text});
   }
  }
@@ -501,42 +514,45 @@ function renderAttendance(){
  link(head,'session='+session.id,'Contenu de la séance'+(hasContent(session)?' (préparé)':'')+' →','link');
  if(session.cancelled){el('p','Cette séance a été supprimée · '+session.cancelled,view,'notice');button('Gérer la séance',view).onclick=()=>openSession(session);return}
  if(!pupils.length){el('p','Aucun élève dans cette classe.',view,'empty');link(view,'students','Ajouter des élèves →','link');return}
- const statusOf=p=>data.attendance.find(a=>a.id===sessionId+'/'+p.id)?.status||'Présent';
- const counts={};for(const p of pupils){const st=statusOf(p);counts[st]=(counts[st]||0)+1}
+ const attP=p=>attOf(sessionId,p.id);
+ const counts={};for(const p of pupils){const a=attP(p);counts[a.presence]=(counts[a.presence]||0)+1;for(const x of a.extras)counts[x]=(counts[x]||0)+1}
  const legend=el('div','',head,'legend');
  for(const st of statuses)if(counts[st]){const sp=el('span','',legend);statusDot(st,sp);sp.append(st+' · '+counts[st])}
- el('p','Tous les élèves sont présents par défaut. Touchez un élève pour indiquer une absence, un retard, un oubli ou une dispense.',head,'muted');
+ el('p','Tous les élèves sont présents par défaut. Touchez un élève : d’un côté présent, absent ou en retard ; de l’autre les mentions (oubli de tenue, mot des parents, inaptitude…), cumulables.',head,'muted');
 
  const grid=el('div','',view,'pupils');
  for(const p of pupils){
-  const st=statusOf(p),info=statusInfo[st];
-  const b=button('',grid,'pupil'+(st==='Présent'?'':' flagged'));
+  const a=attP(p),m=marksOf(a),main=m[0]||'Présent',info=statusInfo[main];
+  const b=button('',grid,'pupil'+(m.length?' flagged':''));
   b.style.setProperty('--c',info.bg);b.style.setProperty('--fg',info.fg);
   avatar(p,b);el('span',p.first,b);el('span',p.last,b,'last');
-  const sd=statusDot(st,b,'st');if(st==='Présent'){sd.style.background='#e5ebe3';sd.style.color='var(--primary)'}
-  if(st!=='Présent')el('span',st,b,'st-label');
+  const sd=statusDot(a.presence,b,'st');if(a.presence==='Présent'){sd.style.background='#e5ebe3';sd.style.color='var(--primary)'}
+  if(a.extras.length){const ex=el('span','',b,'st-extras');for(const x of a.extras)statusDot(x,ex)}
+  if(m.length)el('span',m.join(' · '),b,'st-label');
   if(restrictionOf(p.id))el('span','!',b,'inapt').title='Inaptitude en cours';
-  b.setAttribute('aria-label',label(p)+' : '+st);
-  b.onclick=()=>pupilSheet(p,session,st);
+  b.setAttribute('aria-label',label(p)+' : '+(m.join(', ')||'Présent'));
+  b.onclick=()=>pupilSheet(p,session);
  }
  const actions=el('div','',view,'actions');
  if(isCalled(session))el('p','✓ Appel enregistré'+(recordsOf(session.id).length?'':' · tous présents'),actions,'saved');
  else button('Valider l’appel · '+plural(counts['Présent']||0,'présent'),actions,'primary').onclick=async()=>{await transaction('sessions',t=>t.objectStore('sessions').put({...session,called:'1'}));await load();render();notify('Appel enregistré.')};
 }
-function pupilSheet(p,session,current){
- const d=sheet(label(p));
+function pupilSheet(p,session){
+ const d=sheet(label(p)),id=session.id+'/'+p.id;
  const r=restrictionOf(p.id);if(r)el('p','Inaptitude jusqu’au '+fmtDate(r.end)+' · '+r.name,d,'notice');
  link(d,'student='+p.id,'Ouvrir la fiche de l’élève →','link').onclick=()=>d.close();
- const grid=el('div','',d,'status-grid');
- for(const st of statuses){
-  const b=button('',grid,'status-btn');b.setAttribute('aria-pressed',st===current);
-  statusDot(st,b);b.append(st);
-  b.onclick=async()=>{
-   const id=session.id+'/'+p.id;
-   await transaction(['attendance','sessions'],t=>{if(st==='Présent')t.objectStore('attendance').delete(id);else t.objectStore('attendance').put({id,sessionId:session.id,student:p.id,status:st});t.objectStore('sessions').put({...session,called:'1'})});
-   await load();d.close();render();
-  };
- }
+ let a=attOf(session.id,p.id);
+ const save=async()=>{await transaction(['attendance','sessions'],t=>{if(a.presence==='Présent'&&!a.extras.length)t.objectStore('attendance').delete(id);else t.objectStore('attendance').put({id,sessionId:session.id,student:p.id,status:a.presence,extras:a.extras.join(',')});t.objectStore('sessions').put({...session,called:'1'})});await load();draw()};
+ const cols=el('div','',d,'call-cols');
+ const draw=()=>{cols.replaceChildren();
+  const c1=el('section','',cols,'call-col');el('h3','Présence',c1);const g1=el('div','',c1,'status-grid');
+  for(const st of PRESENCE){const b=button('',g1,'status-btn');b.setAttribute('aria-pressed',a.presence===st);statusDot(st,b);b.append(st);b.onclick=()=>{a={...a,presence:st};save()}}
+  const c2=el('section','',cols,'call-col');el('h3','Mentions (plusieurs possibles)',c2);const g2=el('div','',c2,'status-grid');
+  for(const st of EXTRAS){const on=a.extras.includes(st);const b=button('',g2,'status-btn');b.setAttribute('aria-pressed',on);statusDot(st,b);b.append(st);b.onclick=()=>{a={...a,extras:on?a.extras.filter(x=>x!==st):EXTRAS.filter(x=>x===st||a.extras.includes(x))};save()}}
+ };
+ draw();
+ const ac=el('div','',d,'actions');button('Terminé',ac,'primary').onclick=()=>d.close();
+ d.addEventListener('close',()=>render());
  d.showModal();
 }
 
@@ -603,7 +619,7 @@ async function loadSample(){
  await syncSlots(y.start);
  // Appels passés : la plupart des élèves présents, quelques exceptions.
  const past=data.sessions.filter(isOver),rec=[],upd=[];
- const weights=[['Absent',.05],['Retard',.03],['Oubli de tenue',.03],['Oubli de chaussures',.015],['Certificat médical',.01],['Mot des parents',.015]];
+ const weights=[['Absent',.05],['Retard',.03],['Oubli de tenue',.03],['Oubli de chaussures',.015],['Inaptitude',.01],['Mot des parents',.015]];
  for(const s of past){
   upd.push({...s,called:'1'});
   for(const p of pupilsOf(s.classId)){let x=rnd();for(const [st,w] of weights){if(x<w){rec.push({id:s.id+'/'+p.id,sessionId:s.id,student:p.id,status:st});break}x-=w}}
@@ -813,7 +829,7 @@ function periodSessions(classId,period){
 }
 function studentStats(p,list){
  const out={sessions:list.length};for(const st of statuses)out[st]=0;
- for(const s of list)out[statusIn(s,p)]++;
+ for(const s of list){const a=attOf(s.id,p.id);out[a.presence]++;for(const x of a.extras)out[x]++}
  out.rate=list.length?Math.round((list.length-out['Absent'])/list.length*100):null;
  return out;
 }
@@ -853,7 +869,7 @@ function renderAbsences(){
   const body=el('tbody','',tb);
   for(const {p,st} of rows){
    const tr=el('tr','',body);const th=el('th','',tr,'sticky');link(th,'student='+p.id,label(p));
-   for(const s of list){const td=el('td','',tr);const x=statusIn(s,p);if(x!=='Présent')statusDot(x,td);else td.textContent='·'}
+   for(const s of list){const td=el('td','',tr);const m=marksIn(s,p);if(m.length)m.forEach(x=>statusDot(x,td));else td.textContent='·'}
    el('td',st['Absent']||'',tr,'num');
   }
   const lg=el('div','',view,'legend');for(const st of mentionCols){const sp=el('span','',lg);statusDot(st,sp);sp.append(st)}
@@ -923,12 +939,12 @@ function renderStudent(id){
   // Frise de toutes les séances
   el('h3','Toutes les séances',pa);
   const strip=el('div','',pa,'strip');
-  for(const s of yearList){const x=statusIn(s,p);const sq=el('span','',strip,'sq'+(x==='Présent'?' ok':''));statusIcon(x,sq);if(x!=='Présent'){sq.style.background=statusInfo[x].bg;sq.style.color=statusInfo[x].fg}sq.title=longDate(s.date)+' · '+(cycleOf(s)?.name||s.name)+' · '+x}
-  const ments=yearList.filter(s=>statusIn(s,p)!=='Présent').sort((a,b)=>byDate(b,a));
+  for(const s of yearList){const x=statusIn(s,p);const sq=el('span','',strip,'sq'+(x==='Présent'?' ok':''));statusIcon(x,sq);if(x!=='Présent'){sq.style.background=statusInfo[x].bg;sq.style.color=statusInfo[x].fg}sq.title=longDate(s.date)+' · '+(cycleOf(s)?.name||s.name)+' · '+(marksIn(s,p).join(', ')||x)}
+  const ments=yearList.filter(s=>marksIn(s,p).length).sort((a,b)=>byDate(b,a));
   el('h3','Mentions · '+ments.length,pa);
   if(!ments.length)el('p','Aucune absence, aucun retard ni oubli cette année.',pa,'muted');
   const ml=el('div','',pa,'mentions');
-  for(const s of ments){const x=statusIn(s,p);const row=link(ml,'attendance','','row');row.onclick=()=>{sessionId=s.id};statusDot(x,row);const b=el('div','',row,'body');el('span',x,b,'title');el('span',longDate(s.date)+(s.time?' · '+hh(s.time):'')+(cycleOf(s)?' · '+cycleOf(s).name:''),b,'meta')}
+  for(const s of ments){const m=marksIn(s,p);const row=link(ml,'attendance','','row');row.onclick=()=>{sessionId=s.id};const ds=el('span','',row,'dots');m.forEach(x=>statusDot(x,ds));const b=el('div','',row,'body');el('span',m.join(' · '),b,'title');el('span',longDate(s.date)+(s.time?' · '+hh(s.time):'')+(cycleOf(s)?' · '+cycleOf(s).name:''),b,'meta')}
  }
 
  const grid=el('div','',view,'grid');
@@ -1232,7 +1248,7 @@ function moduleContext(m){
  return {module:{id:m.id,name:m.name},base:new URL(m.base,location.href).href,today:today(),focus:moduleFocus?{...moduleFocus}:null,
   // En direct : inaptitude en cours et statut à l'appel du jour (vide si l'appel n'est pas fait)
   classes:data.classes.map(c=>{const call=data.sessions.filter(x=>x.classId===c.id&&x.date===today()&&active(x)&&isCalled(x)).sort(byDate);const sc=call.find(isNow)||call.at(-1);
-   return {id:c.id,name:c.name,students:pupilsOf(c.id).map(p=>({id:p.id,first:p.first,last:p.last,sex:p.sex||'',photo:p.photo||'',inapt:restrictionOf(p.id)?.name||'',attendance:sc?statusIn(sc,p):''}))}}),
+   return {id:c.id,name:c.name,students:pupilsOf(c.id).map(p=>({id:p.id,first:p.first,last:p.last,sex:p.sex||'',photo:p.photo||'',inapt:restrictionOf(p.id)?.name||'',attendance:sc?statusIn(sc,p):'',marks:sc?marksIn(sc,p):[]}))}}),
   cycles:data.cycles.filter(c=>c.start&&c.end).map(c=>({id:c.id,classId:c.classId,name:c.name,start:c.start,end:c.end,sessions:cycleSessions(c).map(x=>({id:x.id,date:x.date,time:x.time||''}))})),
   sessions:data.sessions.filter(active).map(s=>({id:s.id,classId:s.classId,date:s.date,time:s.time||'',duration:s.duration||'',title:sessionTitle(s)}))};
 }
@@ -1792,7 +1808,7 @@ function periodFacts(st,period,periods){
  const prev=period?periods[periods.findIndex(p=>p.name===period.name)-1]:null;
  const avg=studentAverage(st.id,period),prevAvg=prev?studentAverage(st.id,prev):null;
  const calls=calledSessions(st.classId).filter(s=>!period||(s.date>=period.start&&s.date<=period.end));
- const count=list=>calls.filter(s=>list.includes(statusIn(s,st))).length;
+ const count=list=>calls.filter(s=>marksIn(s,st).some(m=>list.includes(m))).length;
  const grades=data.grades.filter(g=>g.student===st.id&&inPeriod(g,period)&&isFinite(Number(g.grade)));
  const byAct={};for(const g of grades)(byAct[g.name]??=[]).push(Number(g.grade));
  const acts=Object.entries(byAct).map(([n,l])=>({n,v:l.reduce((a,b)=>a+b,0)/l.length})).sort((a,b)=>b.v-a.v);
@@ -1801,7 +1817,7 @@ function periodFacts(st,period,periods){
  const practiced=[...new Set([...cyc,...acts.map(x=>x.n.split(' · ')[0])])];
  const inapt=data.restrictions.filter(r=>r.student===st.id&&(!period||(r.start<=period.end&&r.end>=period.start)));
  const obs=data.observations.filter(o=>o.student===st.id&&(!period||!o.date||(o.date>=period.start&&o.date<=period.end)));
- return {avg,prevAvg,abs:count(['Absent']),late:count(['Retard']),kit:count(['Oubli de tenue','Oubli de chaussures']),med:count(['Certificat médical']),sessions:calls.length,acts,practiced,inapt,obs};
+ return {avg,prevAvg,abs:count(['Absent']),late:count(['Retard']),kit:count(['Oubli de tenue','Oubli de chaussures']),med:count(['Inaptitude']),sessions:calls.length,acts,practiced,inapt,obs};
 }
 // Adjectifs à cocher pour orienter l'appréciation : [identifiant, masculin, féminin, phrase (masc), phrase (fém)]
 const DEFAULT_TRAITS={

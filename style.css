@@ -389,6 +389,15 @@ details.import .segmented{margin:4px 0 12px}
 
 /* ---------- Appréciations : adjectifs et IA ---------- */
 .draft .acts{color:var(--ink)}
+.call-cols{display:grid;gap:18px;grid-template-columns:1fr 1.6fr}
+.call-col h3{margin:0 0 8px;font-size:15px;color:var(--muted)}
+.call-col .status-grid{grid-template-columns:1fr}
+.call-col:last-child .status-grid{grid-template-columns:repeat(auto-fill,minmax(190px,1fr))}
+@media (max-width:700px){.call-cols{grid-template-columns:1fr}}
+.pupil .st-extras{position:absolute;top:40px;right:8px;display:flex;flex-direction:column;gap:3px}
+.pupil .st-extras .dot{width:22px;height:22px;border-radius:11px}
+
+.mentions .dots{display:flex;gap:4px;flex:none}
 .traits-editor{display:flex;flex-direction:column;gap:10px}
 .traits-editor h3{margin:6px 0 0;font-size:16px}
 .trait-edit{display:inline-flex;align-items:center;gap:4px;padding:2px 2px 2px 12px;border:1px solid var(--line);border-radius:999px;background:var(--surface);font-size:14px}

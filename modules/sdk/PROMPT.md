@@ -45,7 +45,7 @@ et récupère les notes, les résultats par élève et un résumé de séance qu
    - `EPSManager.focus()` → `{classId, sessionId}` ou `null` : classe ou séance d'où l'application est ouverte ;
      ouvre directement cette classe si l'application a une notion de classe ;
    - `EPSManager.focusSession()` → `{id, classId, date, time, duration, title}` : utilise sa date par défaut ;
-   - `student.inapt` (inaptitude en cours) et `student.attendance` (statut à l'appel du jour : 'Absent', 'Retard'…) :
+   - `student.inapt` (inaptitude en cours) et `student.attendance` (statut principal à l'appel du jour : 'Absent', 'Retard'…) et `student.marks` (toutes les mentions : présence et 'Oubli de tenue', 'Mot des parents', 'Inaptitude'…) :
      affiche-les pendant l'évaluation (ex. « dispensé de course », « absent à l'appel ») ;
    - `EPSManager.cycles()` : cycles de chaque classe avec leurs séances ;
    - `EPSManager.onChange(cb)` : la liste a été mise à jour (EPS Manager l'actualise en direct toutes les 20 s).
