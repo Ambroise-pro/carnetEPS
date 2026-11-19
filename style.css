@@ -271,6 +271,26 @@ tr.total th,tr.total td{font-weight:800;background:#f4f6f1}
 .item a.title{color:inherit;text-decoration:none}
 .item a.title:hover{text-decoration:underline}
 
+
+/* ---------- Fiche séance ---------- */
+.session-head .body{display:flex;flex-direction:column;gap:4px}
+.session-head strong{font-size:18px}
+.session-head strong::first-letter{text-transform:uppercase}
+.icon-btn:disabled{opacity:.35}
+.autosave{font-size:13px;font-weight:600;color:var(--primary)}
+.content-grid{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(min(320px,100%),1fr))}
+.content-grid .wide{grid-column:1/-1}
+.content-grid textarea{font-size:16px;line-height:1.45}
+.import-results{border-top:1px solid var(--line-soft);padding-top:8px}
+.import-results summary{min-height:44px;display:flex;align-items:center;font-weight:600;cursor:pointer;color:var(--primary)}
+.import-results label{margin:8px 0}
+pre.code{background:#f4f6f1;border-radius:12px;padding:12px;font-size:12px;overflow:auto;margin:0}
+.today-card{gap:10px}
+.tc-main{display:flex;gap:14px;align-items:center;flex:1;min-width:220px;color:inherit;text-decoration:none}
+.today-card .body .tag{align-self:flex-start;margin-top:4px}
+.today-card.now .tag{background:var(--accent);color:var(--ink)}
+.today-card.now .btn{border-color:#fff}
+
 /* ---------- Tablette portrait ---------- */
 @media (max-width:1023px){
   .sidebar{width:212px;padding-inline:10px}
