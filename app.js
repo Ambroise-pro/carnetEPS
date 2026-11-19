@@ -1,6 +1,6 @@
 // Numéro de version affiché dans l'application : l'incrémenter à chaque nouvelle livraison
 // (et le reporter dans sw.js pour renouveler le cache hors ligne).
-const APP_VERSION=17;
+const APP_VERSION=18;
 
 // ---------- Structure de l'application ----------
 const pages={home:'Tableau de bord',calendar:'Calendrier',sessions:'Séances',attendance:'Appel',classes:'Classes',students:'Élèves',groups:'Groupes',cycles:'Cycles',restrictions:'Inaptitudes',grades:'Évaluations',comments:'Appréciations',observations:'Observations',planning:'Paramètres du calendrier',absences:'Absences',settings:'Paramètres',student:'Fiche élève',session:'Séance',boards:'Tableaux',board:'Tableau',module:'Application',apps:'Applications',averages:'Moyennes',years:'Années scolaires',backup:'Sauvegardes'};
@@ -264,6 +264,7 @@ function render(){
  if(q){document.querySelector('h1').textContent='Recherche';return renderSearch(q)}
  document.querySelector('h1').textContent=pages[k];
  document.title=pages[k]+' · EPS Manager';
+ if(k!=='module')backupBanner();
  ({home:renderHome,calendar:renderCalendar,planning:renderPlanning,attendance:renderAttendance,backup:renderBackup,absences:renderAbsences,settings:renderSettings,student:()=>renderStudent(decodeURIComponent(param||'')),session:()=>renderSession(decodeURIComponent(param||'')),boards:renderBoards,board:()=>renderBoard(decodeURIComponent(param||'')),module:()=>renderModule(decodeURIComponent(param||'')),apps:renderApps,averages:renderAverages}[k]||renderList)(k);
 }
 
@@ -544,16 +545,9 @@ function renderBackup(){
  const p=panel(view,'Exporter');
  el('p','La sauvegarde contient toutes les données en clair : celles d’EPS Manager (élèves, photos, notes, inaptitudes…) et celles des applications associées (Demi-fond, Co-évaluation, Évaluations, documents des tableaux). Conservez-la dans un emplacement protégé.',p,'notice');
  const b=lastBackup();el('p',b?'Dernière sauvegarde : '+new Intl.DateTimeFormat('fr',{dateStyle:'long',timeStyle:'short'}).format(new Date(b)):'Aucune sauvegarde exportée depuis cet appareil.',p,'muted');
- const btn=button('Exporter la sauvegarde complète',p,'primary');btn.style.alignSelf='start';
- btn.onclick=async()=>{
-  btn.disabled=true;btn.textContent='Préparation…';
-  try{
-   const extra=await collectExtra(),json=JSON.stringify({version:3,createdAt:new Date().toISOString(),appVersion:APP_VERSION,data,extra});
-   const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([json],{type:'application/json'}));a.download='eps-manager-'+today()+'.json';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);
-   try{localStorage.setItem('eps-last-backup',new Date().toISOString())}catch{}
-   const apps=appsInBackup(extra);render();notify('Sauvegarde exportée ('+mb(json.length)+')'+(apps.length?' avec '+apps.join(', '):'')+'.');
-  }catch{notify('Sauvegarde impossible.');btn.disabled=false;btn.textContent='Exporter la sauvegarde complète'}
- };
+ backupButtons(el('div','',p,'actions'),()=>render());
+ const fq=select(el('label','Rappel de sauvegarde',el('div','',p,'filters')),[['3','Tous les 3 jours'],['7','Chaque semaine'],['14','Toutes les 2 semaines'],['30','Chaque mois'],['0','Jamais']]);fq.value=String(backupEvery());
+ fq.onchange=async()=>{await transaction('settings',t=>t.objectStore('settings').put({...settings(),backupEvery:fq.value}));await load();notify('Rappel enregistré.')};
  const r=panel(view,'Restaurer');
  el('p','La restauration remplace toutes les données de cet appareil, celles des applications comprises.',r,'muted');
  const input=el('input','',el('label','Fichier de sauvegarde (.json)',r));input.type='file';input.accept='.json,application/json';
@@ -636,6 +630,7 @@ async function loadSample(){
 
 // ---------- Listes génériques : ajout, modification, suppression ----------
 function renderList(k){
+ if(k==='comments')appreciationPanel();
  if(k==='students'&&data.classes.length)importPanel();
  if(k==='sessions'){const n=el('p','',view,'muted');n.append('Les séances régulières viennent de votre ');link(n,'planning','emploi du temps');n.append('. Ajoutez ici une séance ponctuelle (rattrapage, sortie, évaluation…).')}
  if(k==='cycles')el('p','Indiquez le début et la fin du cycle : le nombre de séances est calculé à partir du calendrier (emploi du temps, vacances et séances supprimées).',view,'muted');
@@ -1225,14 +1220,17 @@ async function discoverModules(){
  const names=[...new Set([...listed,...extraModules()])].filter(moduleNameOk),found=[];
  for(const id of names){
   try{const r=await fetch('modules/'+id+'/eps-module.json',{cache:'no-cache'});if(!r.ok)throw Error();const m=await r.json();
-   found.push({id,base:'modules/'+id+'/',name:String(m.name||id),description:String(m.description||''),entry:String(m.entry||'index.html'),adapter:m.adapter?String(m.adapter):'',classChoice:!!m.classChoice,fromSettings:!listed.includes(id)});
+   found.push({id,base:'modules/'+id+'/',name:String(m.name||id),description:String(m.description||''),entry:String(m.entry||'index.html'),adapter:m.adapter?String(m.adapter):'',version:String(m.version||''),classChoice:!!m.classChoice,fromSettings:!listed.includes(id)});
   }catch{found.push({id,base:'modules/'+id+'/',name:id,missing:true,fromSettings:!listed.includes(id)})}
  }
  modules=found;return found;
 }
 function moduleContext(m){
  return {module:{id:m.id,name:m.name},base:new URL(m.base,location.href).href,today:today(),focus:moduleFocus?{...moduleFocus}:null,
-  classes:data.classes.map(c=>({id:c.id,name:c.name,students:pupilsOf(c.id).map(p=>({id:p.id,first:p.first,last:p.last,sex:p.sex||'',photo:p.photo||''}))})),
+  // En direct : inaptitude en cours et statut à l'appel du jour (vide si l'appel n'est pas fait)
+  classes:data.classes.map(c=>{const call=data.sessions.filter(x=>x.classId===c.id&&x.date===today()&&active(x)&&isCalled(x)).sort(byDate);const sc=call.find(isNow)||call.at(-1);
+   return {id:c.id,name:c.name,students:pupilsOf(c.id).map(p=>({id:p.id,first:p.first,last:p.last,sex:p.sex||'',photo:p.photo||'',inapt:restrictionOf(p.id)?.name||'',attendance:sc?statusIn(sc,p):''}))}}),
+  cycles:data.cycles.filter(c=>c.start&&c.end).map(c=>({id:c.id,classId:c.classId,name:c.name,start:c.start,end:c.end,sessions:cycleSessions(c).map(x=>({id:x.id,date:x.date,time:x.time||''}))})),
   sessions:data.sessions.filter(active).map(s=>({id:s.id,classId:s.classId,date:s.date,time:s.time||'',duration:s.duration||'',title:sessionTitle(s)}))};
 }
 const adapters={};
@@ -1269,13 +1267,18 @@ async function importModuleData(m,p){
  return {grades:rows.grades.length,results:rows.results.filter(r=>r.student).length,summaries:rows.results.filter(r=>!r.student).length,changed:n,skipped};
 }
 async function syncModule(m,{quiet=false}={}){
+ if(!m.adapter||m.missing)return null;
+ const a=await adapterOf(m);
+ if(!a)return moduleError(m,'fichier '+m.adapter+' introuvable ou invalide',quiet);
+ if(typeof a.collect!=='function')return moduleError(m,'la liaison n’exporte pas collect()',quiet);
+ let p;try{p=await a.collect(moduleContext(m))}catch(e){return moduleError(m,'erreur dans collect() : '+String(e?.message||e).slice(0,80),quiet)}
+ if(!p||typeof p!=='object'||['grades','results','summaries','studentUpdates'].some(k=>p[k]!=null&&!Array.isArray(p[k])))return moduleError(m,'réponse de collect() au mauvais format',quiet);
  try{
-  const a=await adapterOf(m);if(!a?.collect)return null;
-  const r=await importModuleData(m,await a.collect(moduleContext(m)));
-  moduleSync[m.id]={at:new Date(),...r};
+  const r=await importModuleData(m,p);
+  moduleSync[m.id]={at:new Date(),...r};errorShown.delete(m.id);
   if(!quiet)notify(m.name+' · '+(r.changed?plural(r.grades,'note')+', '+plural(r.results,'résultat')+', '+plural(r.summaries,'résumé')+' à jour':'rien de nouveau')+'.');
   return r;
- }catch{if(!quiet)notify(m.name+' : synchronisation impossible.');return null}
+ }catch{return moduleError(m,'import impossible',quiet)}
 }
 async function syncAllModules(){await modulesReady;let changed=0;for(const m of modules){const r=await syncModule(m,{quiet:true});changed+=r?.changed||0}return changed}
 function leaveModule(){
@@ -1298,7 +1301,7 @@ async function renderModule(id){
  const status=el('span','Préparation des classes…',bar,'muted');
  const sync=button('Synchroniser',bar,'small primary');
  const frame=el('iframe','',view,'module-frame');frame.title=m.name;frame.setAttribute('allow','camera; microphone; fullscreen; clipboard-write');
- const refresh=()=>{const s=moduleSync[m.id];status.textContent=s?'Synchronisé à '+s.at.toLocaleTimeString('fr',{hour:'2-digit',minute:'2-digit'})+' · '+plural(s.grades,'note')+' · '+plural(s.results,'résultat'):'Les notes et résultats reviennent dans EPS Manager automatiquement.'};
+ const refresh=()=>{const s=moduleSync[m.id];status.classList.toggle('error',!!s?.error);if(s?.error){status.textContent='Liaison en erreur : '+s.error;return}status.textContent=s?'Synchronisé à '+s.at.toLocaleTimeString('fr',{hour:'2-digit',minute:'2-digit'})+' · '+plural(s.grades,'note')+' · '+plural(s.results,'résultat'):'Les notes et résultats reviennent dans EPS Manager automatiquement.'};
  sync.onclick=async()=>{sync.disabled=true;await syncModule(m);refresh();sync.disabled=false};
  try{const a=await adapterOf(m);if(a?.beforeOpen)await a.beforeOpen(moduleContext(m))}catch{notify('Les classes n’ont pas pu être recopiées dans '+m.name+'.')}
  if(!frame.isConnected)return;
@@ -1307,7 +1310,8 @@ async function renderModule(id){
  if(pick)pick.onchange=async()=>{moduleFocus=pick.value?{classId:pick.value}:null;status.textContent='Préparation de la classe…';
   try{const a=await adapterOf(m);if(a?.beforeOpen)await a.beforeOpen(moduleContext(m))}catch{}
   frame.src=m.base+m.entry+'?t='+Date.now();refresh()};
- moduleTimer=setInterval(async()=>{if(!frame.isConnected)return;await syncModule(m,{quiet:true});refresh()},20000);
+ // Toutes les 20 s : contexte en direct (inaptitudes, appel du jour) puis reprise des résultats
+ moduleTimer=setInterval(async()=>{if(!frame.isConnected)return;try{const a=await adapterOf(m);await a?.refresh?.(moduleContext(m))}catch{}await syncModule(m,{quiet:true});refresh()},20000);
 }
 let sessionReturn='';
 const usedModules=s=>(s?.modules||'').split(',').filter(Boolean);
@@ -1349,7 +1353,9 @@ async function renderApps(){
   const top=el('div','',card,'top');icon('apps',el('span','',top,'avatar'));
   const t=el('div','',top,'body');el('strong',m.name,t);el('span',m.missing?'Dossier modules/'+m.id+'/ introuvable':(m.description||''),t,'muted');
   const sy=moduleSync[m.id];
-  if(!m.missing&&m.adapter)el('span',sy?'Synchronisée à '+sy.at.toLocaleTimeString('fr',{hour:'2-digit',minute:'2-digit'})+' · '+plural(sy.grades,'note')+' · '+plural(sy.results,'résultat'):'Notes et résultats repris automatiquement',card,'small muted');
+  const ver=[m.version&&'Version '+m.version,moduleUpdates[m.id]&&'mise à jour (avant : '+moduleUpdates[m.id].from+')'].filter(Boolean).join(' · ');if(ver)el('span',ver,card,'small muted');
+  if(sy?.error)el('span','Liaison en erreur : '+sy.error,card,'small error');
+  else if(!m.missing&&m.adapter)el('span',sy?'Synchronisée à '+sy.at.toLocaleTimeString('fr',{hour:'2-digit',minute:'2-digit'})+' · '+plural(sy.grades,'note')+' · '+plural(sy.results,'résultat'):'Notes et résultats repris automatiquement',card,'small muted');
   const acts=el('div','',card,'item-actions');
   if(!m.missing){link(acts,'module='+m.id,'Ouvrir','btn primary small');if(m.adapter)button('Synchroniser',acts,'small').onclick=async()=>{await syncModule(m);render()}}
   if(m.fromSettings)iconButton('trash','Retirer de la liste',acts,'danger').onclick=async()=>{await transaction('settings',tx=>tx.objectStore('settings').put({...settings(),modules:extraModules().filter(x=>x!==m.id).join(',')}));await load();modulesReady=discoverModules();await modulesReady;render()};
@@ -1573,7 +1579,7 @@ function lockNow(){
    else{msg.textContent='Clé de secours incorrecte.';inp.select()}};
   inp.focus();
  }
- function unlock(){locked=false;lockFails=0;lastActivity=Date.now();o.remove();document.body.classList.remove('locked')}
+ function unlock(){locked=false;lockFails=0;lastActivity=Date.now();o.remove();document.body.classList.remove('locked');setTimeout(weeklyBackupPrompt,400)}
 }
 function lockSettings(){
  const s=settings(),p=panel(view,'Code de verrouillage');
@@ -1764,6 +1770,142 @@ function renderAverages(){
  };
 }
 
+// ---------- Appréciations du bulletin : brouillons à relire ----------
+// Pour chaque élève d'une classe et d'une période : moyenne (et évolution), assiduité, oublis, retards,
+// inaptitude et observations → un brouillon de phrase, que le professeur relit, corrige et enregistre.
+let draftState=null;
+function periodFacts(st,period,periods){
+ const prev=period?periods[periods.findIndex(p=>p.name===period.name)-1]:null;
+ const avg=studentAverage(st.id,period),prevAvg=prev?studentAverage(st.id,prev):null;
+ const calls=calledSessions(st.classId).filter(s=>!period||(s.date>=period.start&&s.date<=period.end));
+ const count=list=>calls.filter(s=>list.includes(statusIn(s,st))).length;
+ const grades=data.grades.filter(g=>g.student===st.id&&inPeriod(g,period)&&isFinite(Number(g.grade)));
+ const byAct={};for(const g of grades)(byAct[g.name]??=[]).push(Number(g.grade));
+ const acts=Object.entries(byAct).map(([n,l])=>({n,v:l.reduce((a,b)=>a+b,0)/l.length})).sort((a,b)=>b.v-a.v);
+ const inapt=data.restrictions.filter(r=>r.student===st.id&&(!period||(r.start<=period.end&&r.end>=period.start)));
+ const obs=data.observations.filter(o=>o.student===st.id&&(!period||!o.date||(o.date>=period.start&&o.date<=period.end)));
+ return {avg,prevAvg,abs:count(['Absent']),late:count(['Retard']),kit:count(['Oubli de tenue','Oubli de chaussures']),med:count(['Certificat médical']),sessions:calls.length,acts,inapt,obs};
+}
+function draftAppreciation(st,f,periodName,variant=0){
+ const fem=st.sex==='F',e=fem?'e':'',P=st.first,word=/semestre/i.test(periodName)?'semestre':/trimestre/i.test(periodName)?'trimestre':'année',W=word==='année'?'Année':word.charAt(0).toUpperCase()+word.slice(1);
+ const pick=list=>list[([...st.id].reduce((a,c)=>a+c.charCodeAt(0),0)+variant)%list.length];
+ const a=f.avg,out=[];
+ if(a==null)out.push(`Pas assez d’évaluations ce ${word} pour apprécier le travail de ${P}.`);
+ else if(a>=16)out.push(pick([`Excellent${word==='année'?'e':''} ${word} : ${P} montre un très bon niveau et un réel investissement.`,`${W} excellent${word==='année'?'e':''}. ${P} s’engage pleinement et réussit très bien.`]));
+ else if(a>=14)out.push(pick([`Très bon${word==='année'?'ne':''} ${word}. ${P} travaille avec sérieux et obtient de très bons résultats.`,`${P} réalise un${word==='année'?'e':''} très bon${word==='année'?'ne':''} ${word}, avec un engagement régulier.`]));
+ else if(a>=12)out.push(pick([`Bon${word==='année'?'ne':''} ${word}. ${P} participe avec régularité et progresse.`,`${W} satisfaisant${word==='année'?'e':''} : ${P} s’investit et obtient de bons résultats.`]));
+ else if(a>=10)out.push(pick([`${W} correct${word==='année'?'e':''} dans l’ensemble ; ${P} peut encore gagner en engagement.`,`Résultats moyens ce ${word} : ${P} doit s’impliquer davantage pour progresser.`]));
+ else if(a>=8)out.push(`${W} fragile : les résultats de ${P} restent irréguliers.`);
+ else out.push(`${W} difficile : ${P} doit s’investir beaucoup plus pour progresser.`);
+ if(a!=null&&f.prevAvg!=null){if(a-f.prevAvg>=1.5)out.push('Les progrès sont nets par rapport à la période précédente.');else if(f.prevAvg-a>=1.5)out.push('Les résultats sont en baisse par rapport à la période précédente.')}
+ if(a!=null&&f.acts.length>=2&&f.acts[0].v>=a+2)out.push(`Belle réussite en ${f.acts[0].n.split(' · ')[0]}.`);
+ if(f.inapt.length)out.push(`${fem?'Elle':'Il'} a su rester impliqué${e} malgré une inaptitude.`);
+ if(f.abs>=3)out.push(`Les absences (${f.abs}) freinent ${fem?'ses':'ses'} progrès.`);
+ if(f.kit>=2)out.push(`Attention aux oublis de tenue (${f.kit}).`);
+ if(f.late>=3)out.push('La ponctualité doit s’améliorer.');
+ if(a!=null)out.push(a>=14?'Continuez ainsi !':a>=10?'Il faut poursuivre les efforts.':'Un engagement plus constant est attendu.');
+ return out.join(' ');
+}
+function appreciationPanel(){
+ if(!data.classes.length)return;
+ const y=yearOf(today())||data.years[0],periods=periodsOf(y),t=today();
+ const p=panel(view,'Préparer les appréciations du bulletin');
+ el('p','Un brouillon est proposé pour chaque élève à partir de ses notes, de son assiduité, de ses oublis et de vos observations. Relisez, corrigez, puis enregistrez.',p,'muted');
+ const f=el('div','',p,'filters');
+ const cs=select(el('label','Classe',f),data.classes.map(c=>[c.id,c.name]));cs.value=draftState?.classId||(find('classes',classFilter)?classFilter:data.classes[0].id);
+ const ps=select(el('label','Période',f),[...periods.map(x=>[x.name,x.name]),['year','Année entière']]);
+ ps.value=draftState?.period||(periods.find(x=>x.start<=t&&x.end>=t)||periods[0])?.name||'year';
+ button('Préparer les brouillons',f,'primary').onclick=()=>{draftState={classId:cs.value,period:ps.value,texts:{}};render()};
+ if(!draftState)return;
+ const period=periods.find(x=>x.name===draftState.period)||null,pname=period?.name||'Année';
+ const list=el('div','',p,'drafts');
+ for(const st of pupilsOf(draftState.classId)){
+  const id='bulletin:'+draftState.period+':'+st.id,saved=find('comments',id),fx=periodFacts(st,period,periods);
+  const text=draftState.texts[st.id]??saved?.name??draftAppreciation(st,fx,pname);draftState.texts[st.id]=text;
+  const card=el('article','',list,'draft');
+  const h=el('div','',card,'top');avatar(st,h,'sm');link(h,'student='+st.id,label(st),'title');if(saved)el('span','Enregistrée',h,'tag now');
+  el('p',['Moyenne '+avgFmt(fx.avg)+(fx.prevAvg!=null?' (avant '+avgFmt(fx.prevAvg)+')':''),plural(fx.abs,'absence'),plural(fx.kit,'oubli'),plural(fx.late,'retard'),fx.inapt.length?'inaptitude':'',fx.acts.length?fx.acts.map(x=>x.n.split(' · ')[0]+' '+avgFmt(x.v)).join(', '):''].filter(Boolean).join(' · '),card,'muted small');
+  if(fx.obs.length){const d=el('details','',card);el('summary',plural(fx.obs.length,'observation'),d);for(const o of fx.obs)el('p',(o.date?fmtDate(o.date)+' · ':'')+o.name,d,'small')}
+  const ta=el('textarea','',card);ta.rows=3;ta.value=text;
+  const cnt=el('span',text.length+' caractères',card,'small muted');
+  ta.oninput=()=>{draftState.texts[st.id]=ta.value;cnt.textContent=ta.value.length+' caractères'};
+  const r=el('div','',card,'actions');
+  let variant=0;button('Autre formulation',r,'small').onclick=()=>{ta.value=draftAppreciation(st,fx,pname,++variant);ta.oninput()};
+ }
+ const a=el('div','',p,'actions');
+ button('Enregistrer toutes les appréciations',a,'primary').onclick=async()=>{
+  const rows=pupilsOf(draftState.classId).map(st=>({id:'bulletin:'+draftState.period+':'+st.id,student:st.id,name:(draftState.texts[st.id]||'').trim(),date:today(),period:pname})).filter(r=>r.name);
+  await transaction('comments',tx=>rows.forEach(r=>tx.objectStore('comments').put(r)));await load();
+  notify(plural(rows.length,'appréciation enregistrée','appréciations enregistrées')+'.');render();
+ };
+ button('Exporter en CSV',a).onclick=()=>{
+  const csv=[['Nom','Prénom','Appréciation'],...pupilsOf(draftState.classId).map(st=>[st.last,st.first,draftState.texts[st.id]||''])].map(r=>r.map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(';')).join('\n');
+  const l=document.createElement('a');l.href=URL.createObjectURL(new Blob(['﻿'+csv],{type:'text/csv'}));l.download='appreciations-'+(find('classes',draftState.classId)?.name||'')+'-'+pname+'.csv';l.click();setTimeout(()=>URL.revokeObjectURL(l.href),1000);
+ };
+ button('Fermer',a).onclick=()=>{draftState=null;render()};
+}
+
+// ---------- Sauvegarde hebdomadaire ----------
+// Proposition à l'ouverture quand la dernière sauvegarde date de plus que la fréquence choisie ;
+// bandeau rouge quand elle date de plus du double. Le partage de l'iPad permet d'envoyer le fichier
+// vers Google Drive, Fichiers ou iCloud.
+const backupEvery=()=>{const v=settings().backupEvery;return v==null||v===''?7:Number(v)};
+const backupAge=()=>{const b=lastBackup();return b?Math.floor((Date.now()-new Date(b))/864e5):null};
+const hasData=()=>data.students.length>0||data.sessions.length>0;
+async function exportBackup(mode='download'){
+ const extra=await collectExtra(),json=JSON.stringify({version:3,createdAt:new Date().toISOString(),appVersion:APP_VERSION,data,extra});
+ const name='eps-manager-'+today()+'.json',apps=appsInBackup(extra);
+ if(mode==='share'){
+  const file=new File([json],name,{type:'application/json'});
+  if(!navigator.canShare?.({files:[file]}))throw Error('share');
+  await navigator.share({files:[file],title:'Sauvegarde EPS Manager'});
+ }else{const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([json],{type:'application/json'}));a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)}
+ try{localStorage.setItem('eps-last-backup',new Date().toISOString())}catch{}
+ notify('Sauvegarde '+(mode==='share'?'partagée':'exportée')+' ('+mb(json.length)+')'+(apps.length?' avec '+apps.join(', '):'')+'.');
+}
+const canShareFiles=()=>{try{return !!navigator.canShare?.({files:[new File(['x'],'x.json',{type:'application/json'})]})}catch{return false}};
+function backupButtons(parent,after){
+ const go=async mode=>{try{await exportBackup(mode);after?.()}catch(e){if(e?.name!=='AbortError')notify(mode==='share'?'Partage impossible sur cet appareil : utilisez « Télécharger ».':'Sauvegarde impossible.')}};
+ button('Télécharger le fichier',parent,'primary').onclick=()=>go('download');
+ if(canShareFiles())button('Enregistrer dans Drive, Fichiers…',parent).onclick=()=>go('share');
+}
+function backupBanner(){
+ const age=backupAge(),every=backupEvery();
+ if(!every||!hasData()||(age!=null&&age<every*2))return;
+ const b=el('div','',view,'backup-banner');
+ el('strong',age==null?'Aucune sauvegarde n’a encore été faite.':'Dernière sauvegarde il y a '+age+' jours.',b);
+ el('span','Si la tablette est perdue ou réinitialisée, les données seraient perdues.',b);
+ backupButtons(el('div','',b,'actions'),()=>render());
+}
+function weeklyBackupPrompt(){
+ const age=backupAge(),every=backupEvery();
+ if(!every||!hasData()||(age!=null&&age<every))return;
+ try{if(localStorage.getItem('eps-backup-snooze')===today())return}catch{}
+ const d=sheet('Sauvegarde de la semaine');
+ el('p',age==null?'Vous n’avez encore jamais sauvegardé vos données.':'Votre dernière sauvegarde date de '+age+' jours.',d);
+ el('p','La sauvegarde comprend EPS Manager et les données de vos applications. Gardez-la hors de la tablette (Google Drive, Fichiers, iCloud…).',d,'muted');
+ const a=el('div','',d,'actions');backupButtons(a,()=>{d.close();render()});
+ button('Plus tard',a).onclick=()=>d.close();
+ d.addEventListener('close',()=>{try{localStorage.setItem('eps-backup-snooze',today())}catch{}});
+ d.showModal();
+}
+
+// ---------- Versions et état des liaisons des applications ----------
+const moduleUpdates={},errorShown=new Set();
+async function checkModuleVersions(){
+ let seen={};try{seen=JSON.parse(settings().moduleVersions||'{}')||{}}catch{}
+ let changed=false;
+ for(const m of modules){if(!m.version||m.missing)continue;
+  if(seen[m.id]&&seen[m.id]!==m.version){moduleUpdates[m.id]={from:seen[m.id],to:m.version};notify(m.name+' a été mise à jour ('+seen[m.id]+' → '+m.version+').')}
+  if(seen[m.id]!==m.version){seen[m.id]=m.version;changed=true}}
+ if(changed){await transaction('settings',t=>t.objectStore('settings').put({...settings(),moduleVersions:JSON.stringify(seen)}));await load()}
+}
+function moduleError(m,msg,quiet){
+ moduleSync[m.id]={at:new Date(),error:msg,grades:0,results:0,summaries:0};
+ if(!quiet||!errorShown.has(m.id)){errorShown.add(m.id);notify(m.name+' : la liaison avec EPS Manager ne fonctionne plus ('+msg+').')}
+ return null;
+}
+
 // ---------- Recherche ----------
 function renderSearch(q){
  const norm=s=>(s||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase();
@@ -1825,5 +1967,6 @@ if(lockOn())lockNow();
 modulesReady=discoverModules();
 render();
 // Au démarrage : modules dans le menu, puis reprise de leurs notes et résultats.
-modulesReady.then(()=>{buildNav();return syncAllModules()}).then(n=>{if(n&&!location.hash.startsWith('#module'))render()});
+modulesReady.then(async()=>{buildNav();await checkModuleVersions();return syncAllModules()}).then(n=>{if(n&&!location.hash.startsWith('#module'))render()});
+setTimeout(()=>{if(!locked)weeklyBackupPrompt()},1500);
 if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js');

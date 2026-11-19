@@ -39,7 +39,9 @@
     available: function () { return !!context(); },
     /** Tout le contexte : {module, today, focus, classes, sessions, updatedAt}. */
     context: context,
-    /** Classes : [{id, name, students: [{id, first, last, sex: 'F'|'G'|'', photo}]}]. */
+    /** Classes : [{id, name, students: [{id, first, last, sex: 'F'|'G'|'', photo, inapt, attendance}]}].
+        inapt : inaptitude en cours (texte, vide sinon) ; attendance : statut à l'appel du jour
+        ('Présent', 'Absent', 'Retard', 'Oubli de tenue'…, vide si l'appel n'est pas fait). Mis à jour en direct. */
     classes: function () { var c = context(); return c && Array.isArray(c.classes) ? c.classes : []; },
     classById: function (classId) { return api.classes().filter(function (c) { return c.id === classId; })[0] || null; },
     /** Élèves d'une classe, triés par nom. */
@@ -50,6 +52,8 @@
     focus: function () { var c = context(); return c && c.focus || null; },
     /** Séance d'où l'application a été ouverte : {id, classId, date, time, duration, title} ou null. */
     focusSession: function () { var c = context(), f = c && c.focus; return f && f.sessionId ? (c.sessions || []).filter(function (s) { return s.id === f.sessionId; })[0] || null : null; },
+    /** Cycles : [{id, classId, name, start, end, sessions: [{id, date, time}]}]. */
+    cycles: function () { var c = context(); return c && Array.isArray(c.cycles) ? c.cycles : []; },
     /** Date du jour au format AAAA-MM-JJ. */
     today: today,
     /** « NOM Prénom ». */

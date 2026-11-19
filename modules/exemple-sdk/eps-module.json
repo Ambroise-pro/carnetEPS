@@ -3,5 +3,6 @@
   "description": "Petite application de démonstration du kit de compatibilité : une note par élève.",
   "entry": "index.html",
   "adapter": "eps-adapter.js",
-  "classChoice": true
+  "classChoice": true,
+  "version": "1.0"
 }

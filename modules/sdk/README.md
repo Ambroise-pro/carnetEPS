@@ -23,7 +23,8 @@ Ce dossier permet de rendre **n'importe quelle application web** compatible avec
 | Fonction | Renvoie / effet |
 |---|---|
 | `available()` | `true` si l'application est ouverte depuis EPS Manager. |
-| `classes()` | `[{id, name, students: [{id, first, last, sex, photo}]}]` |
+| `classes()` | `[{id, name, students: [{id, first, last, sex, photo, inapt, attendance}]}]` — `inapt` : inaptitude en cours ; `attendance` : statut à l'appel du jour (mis à jour en direct toutes les 20 s, et `onChange` est appelé). |
+| `cycles()` | `[{id, classId, name, start, end, sessions: [{id, date, time}]}]` |
 | `classById(id)`, `students(classId)`, `student(id)`, `classOfStudent(studentId)` | Accès aux classes et élèves (élèves triés par nom). |
 | `focus()` | `{classId, sessionId}` : classe ou séance d'où l'application est ouverte, sinon `null`. |
 | `focusSession()` | `{id, classId, date, time, duration, title}` de cette séance, sinon `null`. |

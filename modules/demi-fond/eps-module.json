@@ -3,5 +3,6 @@
   "description": "Chrono Carnet, Scan CCF, PhotoFinish et fiches papier : de la course à la note.",
   "entry": "index.html",
   "adapter": "eps-adapter.js",
-  "source": "https://github.com/EPS-BARLETTA/Demi-Fond-"
+  "source": "https://github.com/EPS-BARLETTA/Demi-Fond-",
+  "version": "1.0"
 }

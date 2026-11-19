@@ -40,11 +40,13 @@ ctx = {
   base: 'https://…/modules/<dossier>/',
   today: 'AAAA-MM-JJ',
   focus: { classId, sessionId } | null,   // classe choisie ou séance d'où le module est ouvert
-  classes: [{ id, name, students: [{ id, first, last, sex: 'F' | 'G' | '', photo }] }],
+  classes: [{ id, name, students: [{ id, first, last, sex: 'F' | 'G' | '', photo, inapt, attendance }] }],
+  cycles: [{ id, classId, name, start, end, sessions: [{ id, date, time }] }],
   sessions: [{ id, classId, date, time, duration, title }]
 }
 
 export async function beforeOpen(ctx) { /* recopier les classes dans le module */ }
+export async function refresh(ctx) { /* facultatif : mise à jour en direct (toutes les 20 s, module ouvert) */ }
 
 export async function collect(ctx) {
   return {
@@ -56,6 +58,8 @@ export async function collect(ctx) {
 }
 ```
 
+- Ajoutez `"version"` dans `eps-module.json` : EPS Manager l'affiche et signale les mises à jour.
+- Si `collect` échoue ou renvoie un mauvais format, EPS Manager l'indique (page Applications et barre de l'application).
 - `key` doit être stable : la synchronisation peut être répétée sans créer de doublons.
 - Les résultats vont dans la séance de la classe à cette date ; s'il n'y en a pas, une séance
   ponctuelle portant le nom du module est créée.

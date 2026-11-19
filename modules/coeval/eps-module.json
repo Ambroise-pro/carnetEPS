@@ -4,5 +4,6 @@
   "entry": "index.html",
   "adapter": "eps-adapter.js",
   "classChoice": true,
-  "source": "https://github.com/Ambroise-pro/coeval"
+  "source": "https://github.com/Ambroise-pro/coeval",
+  "version": "1.0"
 }

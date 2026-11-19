@@ -45,7 +45,10 @@ et récupère les notes, les résultats par élève et un résumé de séance qu
    - `EPSManager.focus()` → `{classId, sessionId}` ou `null` : classe ou séance d'où l'application est ouverte ;
      ouvre directement cette classe si l'application a une notion de classe ;
    - `EPSManager.focusSession()` → `{id, classId, date, time, duration, title}` : utilise sa date par défaut ;
-   - `EPSManager.onChange(cb)` : la liste a été mise à jour.
+   - `student.inapt` (inaptitude en cours) et `student.attendance` (statut à l'appel du jour : 'Absent', 'Retard'…) :
+     affiche-les pendant l'évaluation (ex. « dispensé de course », « absent à l'appel ») ;
+   - `EPSManager.cycles()` : cycles de chaque classe avec leurs séances ;
+   - `EPSManager.onChange(cb)` : la liste a été mise à jour (EPS Manager l'actualise en direct toutes les 20 s).
    Fais correspondre ces classes au modèle de l'application **en gardant les identifiants d'EPS Manager**
    (`class.id`, `student.id`) : ce sont eux qu'il faudra renvoyer. Si l'application a déjà ses propres listes,
    ajoute ou mets à jour les élèves sans effacer ses données (rapprochement par identifiant, sinon par nom).
