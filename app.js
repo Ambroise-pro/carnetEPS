@@ -1,6 +1,6 @@
 // Numéro de version affiché dans l'application : l'incrémenter à chaque nouvelle livraison
 // (et le reporter dans sw.js pour renouveler le cache hors ligne).
-const APP_VERSION=14;
+const APP_VERSION=15;
 
 // ---------- Structure de l'application ----------
 const pages={home:'Tableau de bord',calendar:'Calendrier',sessions:'Séances',attendance:'Appel',classes:'Classes',students:'Élèves',groups:'Groupes',cycles:'Cycles',restrictions:'Inaptitudes',grades:'Évaluations',comments:'Appréciations',observations:'Observations',planning:'Paramètres du calendrier',absences:'Absences',settings:'Paramètres',student:'Fiche élève',session:'Séance',boards:'Tableaux',board:'Tableau',module:'Application',apps:'Applications',years:'Années scolaires',backup:'Sauvegardes'};
@@ -367,7 +367,7 @@ function renderCalendar(){
  link(acts,'planning','Emploi du temps et vacances','btn small');
  link(acts,'sessions','+ Séance ponctuelle','btn small primary').onclick=()=>{editing={}};
 
- if(!data.timetable.length){const n=el('p','',view,'notice');n.append('Votre emploi du temps est vide. ');link(n,'planning','Renseignez vos cours et vos vacances').style.fontWeight='700';n.append(' : toutes les séances de l’année seront créées automatiquement.')}
+ if(!data.timetable.length&&!data.sessions.some(x=>x.source==='pronote')){const n=el('p','',view,'notice');n.append('Votre emploi du temps est vide. ');link(n,'planning','Renseignez vos cours et vos vacances').style.fontWeight='700';n.append(' : toutes les séances de l’année seront créées automatiquement.')}
 
  const timed=sessions.filter(s=>s.time);
  const startH=Math.min(8,...timed.map(s=>Math.floor(toMin(s.time)/60)));
@@ -439,7 +439,8 @@ function cancelSession(s){
 
 // ---------- Paramètres du calendrier ----------
 function renderPlanning(){
- if(!data.years.length)return needYear();
+ icalPanel();
+ if(!data.years.length)return;
  el('p','Saisissez vos cours une seule fois : les séances sont créées automatiquement jusqu’à la fin de l’année, à partir d’aujourd’hui, en sautant les vacances. Les séances passées, modifiées, supprimées avec un motif ou dont l’appel est fait ne sont jamais changées.',view,'muted');
  const p=panel(view,'Semaines A / B');
  el('p','Choisissez le type de la première semaine de cours. Les semaines entières de vacances ne comptent pas dans l’alternance ; un jour férié isolé ne la décale pas.',p,'muted');
@@ -450,6 +451,8 @@ function renderPlanning(){
  }
  const wt=weekType(today());if(wt)el('p','Cette semaine est une semaine '+wt+'.',p).style.fontWeight='600';
  el('h2','Emploi du temps',view,'section-title big');
+ const fromPronote=data.sessions.filter(x=>x.source==='pronote'&&x.date>=today()&&active(x)).length;
+ if(fromPronote){const n=el('p','',view,'hint');n.append('Vos cours viennent de Pronote : '+plural(fromPronote,'séance à venir','séances à venir')+'. ');link(n,'calendar','Voir le calendrier →');n.append(' Les cours ci-dessous servent seulement pour les classes non reliées à Pronote.')}
  renderCollection('timetable',view);
  el('h2','Vacances et jours fériés',view,'section-title big');
  renderCollection('holidays',view);
@@ -1341,6 +1344,148 @@ async function renderApps(){
  f.onsubmit=async e=>{e.preventDefault();const n=inp.value.trim();if(!moduleNameOk(n))return notify('Nom de dossier invalide (lettres, chiffres, - et _).');
   await transaction('settings',tx=>tx.objectStore('settings').put({...settings(),modules:[...new Set([...extraModules(),n])].join(',')}));await load();modulesReady=discoverModules();await modulesReady;render();
   notify(modules.find(x=>x.id===n)?.missing?'Dossier modules/'+n+'/ introuvable ou sans eps-module.json.':'Application associée.')};
+}
+
+// ---------- Import de l'emploi du temps Pronote (iCal) ----------
+// Étapes : 1. créer les classes ; 2. charger le calendrier (lien iCal Pronote ou fichier .ics) ;
+// 3. associer chaque classe/groupe Pronote à une classe. Chaque cours devient une séance datée (à partir d'aujourd'hui).
+let ical={step:1,events:null,source:''};
+const icalNorm=v=>String(v??'').normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase().replace(/(eme|e|de|nde|ere|er)\b/g,'').replace(/[^a-z0-9]/g,'');
+function icalMap(){try{return JSON.parse(settings().icalMap||'{}')||{}}catch{return {}}}
+// Lecture d'un fichier iCalendar : lignes repliées, paramètres, dates locales ou UTC, texte échappé.
+function parseICS(text){
+ const lines=String(text).replace(/\r\n?/g,'\n').replace(/\n[ \t]/g,'').split('\n'),events=[];let ev=null;
+ const unesc=v=>v.replace(/\\n/gi,'\n').replace(/\\([,;\\])/g,'$1');
+ const when=(v,params)=>{const m=v.match(/^(\d{4})(\d{2})(\d{2})(?:T(\d{2})(\d{2})(\d{2})?(Z)?)?/);if(!m)return null;
+  const d=m[7]?new Date(Date.UTC(+m[1],m[2]-1,+m[3],+(m[4]||0),+(m[5]||0))):new Date(+m[1],m[2]-1,+m[3],+(m[4]||0),+(m[5]||0));
+  return {date:iso(d),min:m[4]?d.getHours()*60+d.getMinutes():null,allDay:!m[4]||/VALUE=DATE(?!-)/.test(params)}};
+ for(const line of lines){
+  if(line==='BEGIN:VEVENT'){ev={};continue}
+  if(line==='END:VEVENT'){if(ev?.start)events.push(ev);ev=null;continue}
+  if(!ev)continue;
+  const i=line.indexOf(':');if(i<0)continue;
+  const [name,...ps]=line.slice(0,i).split(';'),params=ps.join(';'),val=line.slice(i+1);
+  if(name==='DTSTART')ev.start=when(val,params);else if(name==='DTEND')ev.end=when(val,params);
+  else if(name==='SUMMARY')ev.summary=unesc(val);else if(name==='DESCRIPTION')ev.description=unesc(val);
+  else if(name==='LOCATION')ev.location=unesc(val);else if(name==='UID')ev.uid=val;else if(name==='STATUS')ev.status=val;
+ }
+ return events.filter(e=>!e.start.allDay&&e.start.min!=null).map(e=>{
+  const desc=e.description||'',field=re=>{const m=desc.match(re);return m?m[1].trim():''};
+  const parts=(e.summary||'').split(/\s+-\s+/).map(s=>s.trim()).filter(Boolean);
+  // Classe ou groupe : champs de la description Pronote, sinon la partie du titre qui ressemble à une classe
+  const group=field(/(?:Classes?|Groupes?|Parties? de classe)\s*:\s*([^\n]+)/i)||parts.slice(1).find(s=>/\d/.test(s)&&s.length<=24)||parts.find(s=>/^\d\S*/.test(s))||parts[0]||'Sans nom';
+  const rawSubject=field(/Mati[eè]re\s*:\s*([^\n]+)/i)||parts[0]||'';
+  const subject=/phys.*sport|^e\.?\s?p\.?\s?s\.?$/i.test(rawSubject)?'EPS':rawSubject;
+  const cancelled=/CANCELLED/i.test(e.status||'')||/annul|prof\.? absent|absent/i.test((e.summary||'')+' '+desc);
+  const dur=e.end&&e.end.date===e.start.date&&e.end.min!=null?Math.max(5,e.end.min-e.start.min):55;
+  return {uid:e.uid||'',date:e.start.date,time:fromMin(e.start.min),duration:String(dur),group,subject,location:e.location||field(/Salles?\s*:\s*([^\n]+)/i),cancelled};
+ });
+}
+async function icalFetch(url){
+ const u=url.trim().replace(/^webcal:/i,'https:');
+ const r=await fetch(u,{cache:'no-store'});if(!r.ok)throw Error('HTTP '+r.status);
+ const t=await r.text();if(!/BEGIN:VCALENDAR/.test(t))throw Error('format');
+ return t;
+}
+function icalSlots(list){
+ const days=['dim.','lun.','mar.','mer.','jeu.','ven.','sam.'],seen=new Map();
+ for(const e of list){const k=weekdayOf(e.date)+'|'+e.time;seen.set(k,(seen.get(k)||0)+1)}
+ return [...seen.entries()].sort().slice(0,4).map(([k])=>{const [d,t]=k.split('|');return days[d]+' '+hh(t)}).join(', ');
+}
+// Crée, met à jour ou retire les séances Pronote (identifiées par l'UID du cours). Ne touche pas aux séances protégées.
+async function icalImport(events,map){
+ const t=today(),put=[],ids=new Set(),classes=new Set(Object.values(map).filter(Boolean));
+ for(const e of events){
+  const classId=map[e.group];if(!classId||!find('classes',classId)||e.date<t)continue;
+  const id='pronote:'+(e.uid||e.group)+':'+e.date+':'+e.time;ids.add(id);
+  const old=find('sessions',id);
+  const row={...old,id,classId,date:e.date,time:e.time,duration:e.duration,name:old?.name||e.subject||'EPS',source:'pronote',...(e.location?{location:e.location}:{})};
+  if(e.cancelled&&!old?.cancelled)row.cancelled='Annulé dans Pronote';
+  if(!e.cancelled&&old?.cancelled==='Annulé dans Pronote')delete row.cancelled;
+  if(old&&(old.custom||isCalled(old)))continue;
+  if(JSON.stringify(old)!==JSON.stringify(row))put.push(row);
+ }
+ const removed=data.sessions.filter(s=>s.source==='pronote'&&s.date>=t&&!ids.has(s.id)&&!protectedSession(s)&&!hasContent(s)).map(s=>s.id);
+ // Les cours saisis à la main pour ces classes sont remplacés par Pronote (évite les doublons).
+ const slots=data.timetable.filter(x=>classes.has(x.classId)).map(x=>x.id);
+ await transaction(['sessions','timetable'],tx=>{put.forEach(r=>tx.objectStore('sessions').put(r));removed.forEach(id=>tx.objectStore('sessions').delete(id));slots.forEach(id=>tx.objectStore('timetable').delete(id))});
+ await load();if(slots.length)await syncSlots();
+ return {added:put.filter(r=>!data.sessions.some(s=>s.id===r.id&&s!==r)).length,updated:put.length,removed:removed.length,slots:slots.length,count:ids.size};
+}
+async function saveIcalSettings(changes){await transaction('settings',t=>t.objectStore('settings').put({...settings(),...changes}));await load()}
+async function ensureYear(){
+ const t=today();let y=yearOf(t);if(y)return y;
+ const d=new Date(),start=d.getMonth()>=7?d.getFullYear():d.getFullYear()-1;
+ y={id:crypto.randomUUID(),name:start+'-'+(start+1),start:start+'-09-01',end:(start+1)+'-07-04',firstWeek:'A'};
+ await transaction('years',tx=>tx.objectStore('years').put(y));await load();notify('Année scolaire '+y.name+' créée.');return y;
+}
+function icalPanel(){
+ const p=panel(view,'Importer mon emploi du temps Pronote');
+ const url=settings().icalUrl||'';
+ if((url||settings().icalMap)&&ical.step===1&&!ical.events&&!ical.started){
+  const r=el('div','',p,'actions');
+  const n=data.sessions.filter(x=>x.source==='pronote'&&x.date>=today()&&active(x)).length;
+  el('span',plural(n,'séance Pronote à venir','séances Pronote à venir')+(url?' · lien enregistré':''),r,'muted');
+  if(url)button('Mettre à jour depuis Pronote',r,'primary').onclick=async()=>{try{const evs=parseICS(await icalFetch(url));const map=icalMap(),unknown=[...new Set(evs.map(e=>e.group))].filter(g=>!(g in map));
+   if(unknown.length){ical={step:3,events:evs,source:'lien'};render();return notify('Nouvelles classes Pronote à associer.')}
+   const res=await icalImport(evs,map);render();notify(plural(res.count,'cours importé','cours importés')+' depuis Pronote'+(res.removed?' · '+res.removed+' retiré(s)':'')+'.')}catch{notify('Lien Pronote illisible depuis l’application : importez le fichier .ics (étape 2).');ical.step=2;render()}};
+  button('Importer à nouveau',r).onclick=()=>{ical={step:1,events:null,source:'',started:true};render()};
+  return;
+ }
+ const steps=el('ol','',p,'stepper');
+ ['Créer les classes','Importer le calendrier','Associer les classes'].forEach((t,i)=>{const li=el('li','',steps,ical.step===i+1?'on':ical.step>i+1?'done':'');el('span',String(i+1),li,'num');el('span',t,li)});
+ if(ical.step===1){
+  el('p','Créez toutes vos classes (une par ligne). Les élèves pourront être ajoutés plus tard (import du trombinoscope PRONOTE).',p,'muted');
+  if(data.classes.length){const c=el('div','',p,'legend');for(const x of data.classes)el('span',x.name+' · '+plural(pupilsOf(x.id).length,'élève'),c)}
+  const ta=el('textarea','',el('label','Nouvelles classes',p));ta.rows=4;ta.placeholder='6e A\n5e B\n4e C\n3e D';
+  const a=el('div','',p,'actions');
+  button('Créer ces classes',a).onclick=async()=>{const y=await ensureYear();const names=ta.value.split(/[\n;,]+/).map(s=>s.trim()).filter(Boolean),known=new Set(data.classes.map(c=>icalNorm(c.name)));
+   const rows=names.filter(n=>!known.has(icalNorm(n))).map(n=>({id:crypto.randomUUID(),year:y.id,name:n}));if(!rows.length)return notify('Aucune nouvelle classe.');
+   await transaction('classes',tx=>rows.forEach(r=>tx.objectStore('classes').put(r)));await load();render();notify(plural(rows.length,'classe créée','classes créées')+'.')};
+  const next=button('Étape suivante →',a,'primary');next.disabled=!data.classes.length;next.onclick=()=>{ical.step=2;render()};
+ }
+ if(ical.step===2){
+  el('p','Dans Pronote : Emploi du temps › icône « Exporter / iCal » › copiez le lien. Collez-le ci-dessous.',p,'muted');
+  const f=el('div','',p,'filters');
+  const inp=el('input','',el('label','Lien iCal Pronote',f));inp.type='url';inp.placeholder='https://…index-education.net/pronote/ical/…';inp.value=url;
+  const load1=button('Charger le lien',f,'primary');
+  const alt=el('p','',p,'muted');alt.append('Si le lien ne peut pas être lu (Pronote peut refuser la lecture directe depuis une application), ouvrez-le dans Safari ou Chrome : un fichier .ics se télécharge. Choisissez-le ici :');
+  const file=el('input','',el('label','Fichier .ics',p));file.type='file';file.accept='.ics,text/calendar';
+  const done=(text,src)=>{const evs=parseICS(text);if(!evs.length)return notify('Aucun cours trouvé dans ce calendrier.');ical={step:3,events:evs,source:src};render()};
+  load1.onclick=async()=>{const u=inp.value.trim();if(!u)return notify('Collez le lien iCal de Pronote.');load1.disabled=true;
+   try{const t=await icalFetch(u);await saveIcalSettings({icalUrl:u});done(t,'lien')}catch{notify('Lecture du lien impossible depuis l’application. Utilisez le fichier .ics ci-dessous.');await saveIcalSettings({icalUrl:u})}finally{load1.disabled=false}};
+  file.onchange=async()=>{try{done(await file.files[0].text(),'fichier')}catch{notify('Fichier illisible.')}};
+  button('← Étape précédente',el('div','',p,'actions')).onclick=()=>{ical.step=1;render()};
+ }
+ if(ical.step===3&&ical.events){
+  const t=today(),future=ical.events.filter(e=>e.date>=t),groups=[...new Set(ical.events.map(e=>e.group))].sort((a,b)=>a.localeCompare(b,'fr',{numeric:true}));
+  el('p',plural(ical.events.length,'cours trouvé','cours trouvés')+' ('+plural(future.length,'à venir','à venir')+'). Associez chaque classe ou groupe Pronote à une de vos classes ; « Ignorer » pour les cours à ne pas importer.',p,'muted');
+  const map={...icalMap()},sels={};
+  const box=el('div','',p,'table-box flat');const tb=el('table','',box,'stats');
+  const hr=el('tr','',el('thead','',tb));el('th','Dans Pronote',hr);el('th','Cours',hr,'num');el('th','Créneaux',hr);el('th','Classe EPS Manager',hr);
+  const body=el('tbody','',tb);
+  for(const g of groups){
+   const list=ical.events.filter(e=>e.group===g),tr=el('tr','',body);
+   const th=el('th','',tr);el('span',g,th);const subj=[...new Set(list.map(e=>e.subject).filter(Boolean))].slice(0,2).join(', ');if(subj)el('small',' · '+subj,th,'muted');
+   el('td',list.filter(e=>e.date>=t).length,tr,'num');el('td',icalSlots(list),tr);
+   const s=select(el('td','',tr),[['','Ignorer'],...data.classes.map(c=>[c.id,c.name]),['new:'+g,'+ Créer « '+g+' »']]);
+   const auto=data.classes.find(c=>icalNorm(c.name)===icalNorm(g));
+   s.value=g in map?(map[g]&&find('classes',map[g])?map[g]:''):(auto?auto.id:'');sels[g]=s;
+  }
+  const manual=data.timetable.length;
+  if(manual)el('p','Les cours saisis à la main dans l’emploi du temps pour les classes associées seront remplacés par ceux de Pronote.',p,'notice');
+  const a=el('div','',p,'actions');
+  button('← Étape précédente',a).onclick=()=>{ical.step=2;render()};
+  button('Importer les séances',a,'primary').onclick=async()=>{
+   const y=await ensureYear(),create=[];
+   for(const g of groups){const v=sels[g].value;if(v.startsWith('new:')){const c={id:crypto.randomUUID(),year:y.id,name:g};create.push(c);map[g]=c.id}else map[g]=v}
+   if(create.length){await transaction('classes',tx=>create.forEach(c=>tx.objectStore('classes').put(c)));await load()}
+   if(!Object.values(map).some(Boolean))return notify('Associez au moins une classe.');
+   const res=await icalImport(ical.events,map);await saveIcalSettings({icalMap:JSON.stringify(map)});
+   ical={step:1,events:null,source:''};render();
+   notify(plural(res.count,'séance importée','séances importées')+' depuis Pronote'+(res.slots?' · '+plural(res.slots,'cours saisi à la main remplacé','cours saisis à la main remplacés'):'')+'.');
+  };
+ }
 }
 
 // ---------- Recherche ----------
