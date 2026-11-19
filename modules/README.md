@@ -4,6 +4,12 @@ Une application associée (appelée « module » dans le code) est une applicati
 EPS Manager l'ouvre en plein écran, lui transmet les classes et récupère ses résultats.
 **L'application principale n'a pas à être modifiée pour ajouter un module.**
 
+## Rendre une application compatible
+
+Le dossier `sdk/` contient le kit : un prompt prêt à coller dans un assistant de programmation (`sdk/PROMPT.md`),
+une bibliothèque à inclure dans l'application (`sdk/eps-sdk.js`) et une liaison standard (`sdk/eps-adapter.js`).
+Voir `sdk/README.md` et l'application d'exemple `exemple-sdk/`.
+
 ## Ajouter un module
 
 1. Copier l'application dans `modules/<nom-du-dossier>/` (lettres, chiffres, `-`, `_`).

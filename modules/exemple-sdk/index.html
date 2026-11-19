@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Exemple SDK EPS Manager</title>
+<style>
+body{margin:0;font:16px/1.4 system-ui,sans-serif;background:#f4f6f1;color:#10261f}
+main{max-width:760px;margin:0 auto;padding:20px;display:flex;flex-direction:column;gap:14px}
+h1{margin:0;font-size:26px}.muted{color:#4a5e55;font-size:14px}
+.box{background:#fff;border:1px solid #dce3d9;border-radius:16px;padding:14px}
+label{display:flex;flex-direction:column;gap:4px;font-size:14px;font-weight:600;color:#4a5e55}
+select,input,button{font:inherit;min-height:44px;border-radius:10px;border:1px solid #b9c6b7;padding:0 10px}
+button{background:#1b4d3e;color:#fff;border-color:#1b4d3e;font-weight:600;cursor:pointer}
+.row{display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid #eef2ec}
+.row span{flex:1}.row input{width:90px}
+</style>
+</head>
+<body>
+<main>
+  <h1>Exemple d'application associée</h1>
+  <p id="state" class="muted"></p>
+  <div class="box"><label>Classe <select id="cls"></select></label></div>
+  <div class="box"><label>Titre de l'évaluation <input id="title" value="Test d'exemple"></label></div>
+  <div class="box" id="list"></div>
+  <button id="send" type="button">Envoyer les notes à EPS Manager</button>
+</main>
+<script src="eps-sdk.js"></script>
+<script>
+  // 1. Lire les classes d'EPS Manager (si l'application est ouverte depuis EPS Manager)
+  const E = window.EPSManager, on = E && E.available();
+  document.getElementById('state').textContent = on
+    ? 'Ouverte depuis EPS Manager : ' + E.classes().length + ' classes reçues.'
+    : 'Ouverte seule : ouvrez-la depuis EPS Manager pour recevoir les classes.';
+  const cls = document.getElementById('cls'), list = document.getElementById('list');
+  (on ? E.classes() : []).forEach(c => cls.add(new Option(c.name, c.id)));
+  if (on && E.focus()) cls.value = E.focus().classId;      // classe de la séance d'où on vient
+  function show() {
+    list.replaceChildren();
+    for (const s of on ? E.students(cls.value) : []) {
+      const row = document.createElement('div'); row.className = 'row';
+      row.innerHTML = '<span></span><input type="number" min="0" max="20" step="0.5" inputmode="decimal" aria-label="Note">';
+      row.querySelector('span').textContent = E.fullName(s);
+      row.querySelector('input').dataset.id = s.id;
+      list.append(row);
+    }
+  }
+  cls.onchange = show; show();
+  // 2. Envoyer notes, résultats et résumé (clés stables : renvoyer met à jour)
+  document.getElementById('send').onclick = () => {
+    if (!on) return alert('Ouvrez l’application depuis EPS Manager.');
+    const title = document.getElementById('title').value || 'Note', date = E.focusSession()?.date || E.today();
+    const notes = [...list.querySelectorAll('input')].filter(i => i.value !== '');
+    for (const i of notes) {
+      const g = Number(i.value.replace(',', '.'));
+      E.grade({key: 'note:' + title + ':' + i.dataset.id, studentId: i.dataset.id, name: title, grade: g, date});
+      E.result({key: 'note:' + title + ':' + i.dataset.id, studentId: i.dataset.id, label: title, value: String(g).replace('.', ','), unit: '/20', date});
+    }
+    E.summary({key: 'resume:' + title + ':' + cls.value + ':' + date, classId: cls.value, text: title + ' · ' + notes.length + ' note(s) envoyée(s)', date});
+    alert(notes.length + ' note(s) envoyée(s). Revenez à EPS Manager : elles y seront reprises.');
+  };
+</script>
+</body>
+</html>
