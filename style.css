@@ -387,6 +387,17 @@ dialog label.check{flex-direction:row;align-items:center;gap:10px;color:var(--in
 details.import .segmented{margin:4px 0 12px}
 .tag.needs{background:#e7defa;color:#3f2a73;white-space:normal;align-self:flex-start}
 
+/* ---------- Appréciations : adjectifs et IA ---------- */
+.draft .acts{color:var(--ink)}
+.panel>label.check{flex-direction:row;align-items:center;gap:10px;color:var(--ink);min-height:44px}
+.traits{display:flex;flex-direction:column;gap:6px}
+.trait-group{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.trait-sign{font-weight:800;width:22px;text-align:center;color:var(--primary)}
+.trait-group.neg .trait-sign{color:var(--danger)}
+button.trait{min-height:36px;padding:0 12px;font-size:14px;border-radius:999px;border:1px solid var(--line);background:var(--surface);color:var(--ink)}
+.pos button.trait[aria-pressed=true]{background:var(--accent);border-color:var(--primary);font-weight:600}
+.neg button.trait[aria-pressed=true]{background:var(--warn-bg);border-color:var(--danger);color:var(--warn-ink);font-weight:600}
+
 /* ---------- Tablette portrait ---------- */
 @media (max-width:1023px){
   .sidebar{width:212px;padding-inline:10px}

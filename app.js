@@ -1,6 +1,6 @@
 // Numéro de version affiché dans l'application : l'incrémenter à chaque nouvelle livraison
 // (et le reporter dans sw.js pour renouveler le cache hors ligne).
-const APP_VERSION=22;
+const APP_VERSION=23;
 
 // ---------- Structure de l'application ----------
 const pages={home:'Tableau de bord',calendar:'Calendrier',sessions:'Séances',attendance:'Appel',classes:'Classes',students:'Élèves',groups:'Groupes',cycles:'Cycles',restrictions:'Inaptitudes',grades:'Évaluations',comments:'Appréciations',observations:'Observations',planning:'Paramètres du calendrier',absences:'Absences',settings:'Paramètres',student:'Fiche élève',session:'Séance',boards:'Tableaux',board:'Tableau',module:'Application',apps:'Applications',averages:'Moyennes',years:'Années scolaires',backup:'Sauvegardes'};
@@ -780,6 +780,7 @@ async function remove(k,id){
 function renderSettings(){
  lockSettings();
  periodsSettings();
+ aiSettings();
  const cfg=settings();
  const p=panel(view,'Alertes « À surveiller »');
  el('p','Choisissez quand un élève apparaît dans le bloc « À surveiller » du tableau de bord.',p,'muted');
@@ -1794,13 +1795,24 @@ function periodFacts(st,period,periods){
  const grades=data.grades.filter(g=>g.student===st.id&&inPeriod(g,period)&&isFinite(Number(g.grade)));
  const byAct={};for(const g of grades)(byAct[g.name]??=[]).push(Number(g.grade));
  const acts=Object.entries(byAct).map(([n,l])=>({n,v:l.reduce((a,b)=>a+b,0)/l.length})).sort((a,b)=>b.v-a.v);
+ // Activités pratiquées : cycles de la classe sur la période et activités notées
+ const cyc=data.cycles.filter(c=>c.classId===st.classId&&c.start&&(!period||(c.start<=period.end&&c.end>=period.start))).map(c=>c.name);
+ const practiced=[...new Set([...cyc,...acts.map(x=>x.n.split(' · ')[0])])];
  const inapt=data.restrictions.filter(r=>r.student===st.id&&(!period||(r.start<=period.end&&r.end>=period.start)));
  const obs=data.observations.filter(o=>o.student===st.id&&(!period||!o.date||(o.date>=period.start&&o.date<=period.end)));
- return {avg,prevAvg,abs:count(['Absent']),late:count(['Retard']),kit:count(['Oubli de tenue','Oubli de chaussures']),med:count(['Certificat médical']),sessions:calls.length,acts,inapt,obs};
+ return {avg,prevAvg,abs:count(['Absent']),late:count(['Retard']),kit:count(['Oubli de tenue','Oubli de chaussures']),med:count(['Certificat médical']),sessions:calls.length,acts,practiced,inapt,obs};
 }
-function draftAppreciation(st,f,periodName,variant=0){
+// Adjectifs à cocher pour orienter l'appréciation : [identifiant, masculin, féminin, phrase (masc), phrase (fém)]
+const TRAITS={
+ pos:[['investi','investi','investie'],['serieux','sérieux','sérieuse'],['motive','motivé','motivée'],['autonome','autonome','autonome'],['perseverant','persévérant','persévérante'],['respectueux','respectueux','respectueuse'],['moteur','moteur','motrice'],['ecoute','à l’écoute','à l’écoute'],['camarade','bon camarade','bonne camarade'],['dynamique','dynamique','dynamique'],['progres','en progrès','en progrès'],['arbitre','bon arbitre','bonne arbitre']],
+ neg:[['bavard','bavard','bavarde','doit être moins bavard','doit être moins bavarde'],['disperse','dispersé','dispersée','doit rester plus concentré','doit rester plus concentrée'],['passif','passif','passive','doit s’engager davantage','doit s’engager davantage'],['retrait','en retrait','en retrait','doit oser davantage','doit oser davantage'],['irregulier','irrégulier','irrégulière','doit être plus régulier','doit être plus régulière'],['efforts','manque d’efforts','manque d’efforts','doit fournir plus d’efforts','doit fournir plus d’efforts'],['agite','agité','agitée','doit canaliser son énergie','doit canaliser son énergie'],['decourage','se décourage','se décourage','ne doit pas se décourager','ne doit pas se décourager'],['comportement','comportement à revoir','comportement à revoir','doit améliorer son comportement','doit améliorer son comportement'],['tenue','oublis de tenue','oublis de tenue','doit penser à sa tenue','doit penser à sa tenue']]
+};
+const traitWord=(t,fem)=>fem?t[2]:t[1];
+const joinFr=l=>l.length<2?(l[0]||''):l.slice(0,-1).join(', ')+' et '+l.at(-1);
+function draftAppreciation(st,f,periodName,variant=0,tags=[]){
  const fem=st.sex==='F',e=fem?'e':'',P=st.first,word=/semestre/i.test(periodName)?'semestre':/trimestre/i.test(periodName)?'trimestre':'année',W=word==='année'?'Année':word.charAt(0).toUpperCase()+word.slice(1);
  const pick=list=>list[([...st.id].reduce((a,c)=>a+c.charCodeAt(0),0)+variant)%list.length];
+ const pos=TRAITS.pos.filter(t=>tags.includes(t[0])),neg=TRAITS.neg.filter(t=>tags.includes(t[0]));
  const a=f.avg,out=[];
  if(a==null)out.push(`Pas assez d’évaluations ce ${word} pour apprécier le travail de ${P}.`);
  else if(a>=16)out.push(pick([`Excellent${word==='année'?'e':''} ${word} : ${P} montre un très bon niveau et un réel investissement.`,`${W} excellent${word==='année'?'e':''}. ${P} s’engage pleinement et réussit très bien.`]));
@@ -1809,49 +1821,114 @@ function draftAppreciation(st,f,periodName,variant=0){
  else if(a>=10)out.push(pick([`${W} correct${word==='année'?'e':''} dans l’ensemble ; ${P} peut encore gagner en engagement.`,`Résultats moyens ce ${word} : ${P} doit s’impliquer davantage pour progresser.`]));
  else if(a>=8)out.push(`${W} fragile : les résultats de ${P} restent irréguliers.`);
  else out.push(`${W} difficile : ${P} doit s’investir beaucoup plus pour progresser.`);
+ if(f.practiced.length){const best=a!=null&&f.acts.length>=2&&f.acts[0].v>=a+2?f.acts[0].n.split(' · ')[0]:'';
+  out.push(best?`En ${f.practiced.map(x=>x.toLocaleLowerCase('fr')).join(', ')}, ${fem?'elle':'il'} réussit particulièrement en ${best.toLocaleLowerCase('fr')}.`:pick([`Activités du ${word==='année'?'cours de l’année':word} : ${joinFr(f.practiced.map(x=>x.toLocaleLowerCase('fr')))}.`,`${fem?'Elle':'Il'} a pratiqué ${joinFr(f.practiced.map(x=>x.toLocaleLowerCase('fr')))}.`]))}
+ if(pos.length)out.push(pick([`${fem?'Elle':'Il'} se montre ${joinFr(pos.map(t=>traitWord(t,fem)))}.`,`${P} est ${joinFr(pos.map(t=>traitWord(t,fem)))}.`]));
  if(a!=null&&f.prevAvg!=null){if(a-f.prevAvg>=1.5)out.push('Les progrès sont nets par rapport à la période précédente.');else if(f.prevAvg-a>=1.5)out.push('Les résultats sont en baisse par rapport à la période précédente.')}
- if(a!=null&&f.acts.length>=2&&f.acts[0].v>=a+2)out.push(`Belle réussite en ${f.acts[0].n.split(' · ')[0]}.`);
  if(f.inapt.length)out.push(`${fem?'Elle':'Il'} a su rester impliqué${e} malgré une inaptitude.`);
- if(f.abs>=3)out.push(`Les absences (${f.abs}) freinent ${fem?'ses':'ses'} progrès.`);
- if(f.kit>=2)out.push(`Attention aux oublis de tenue (${f.kit}).`);
+ if(neg.length)out.push(`${fem?'Elle':'Il'} ${joinFr(neg.map(t=>fem?t[4]:t[3]))}.`);
+ if(f.abs>=3)out.push(`Les absences (${f.abs}) freinent ses progrès.`);
+ if(f.kit>=2&&!tags.includes('tenue'))out.push(`Attention aux oublis de tenue (${f.kit}).`);
  if(f.late>=3)out.push('La ponctualité doit s’améliorer.');
- if(a!=null)out.push(a>=14?'Continuez ainsi !':a>=10?'Il faut poursuivre les efforts.':'Un engagement plus constant est attendu.');
+ if(a!=null)out.push(a>=14&&!neg.length?'Continuez ainsi !':a>=10?'Il faut poursuivre les efforts.':'Un engagement plus constant est attendu.');
  return out.join(' ');
+}
+
+// ---------- Génération par IA (Gemini) ----------
+// Le prénom n'est jamais envoyé : l'IA écrit [PRÉNOM], remplacé sur la tablette. Les besoins particuliers ne sont jamais envoyés ;
+// les observations seulement si l'option est cochée. La clé d'API reste sur l'appareil.
+const aiReady=()=>!!settings().aiKey;
+function aiPrompt(st,f,periodName,tags){
+ const fem=st.sex==='F',pos=TRAITS.pos.filter(t=>tags.includes(t[0])).map(t=>traitWord(t,fem)),neg=TRAITS.neg.filter(t=>tags.includes(t[0])).map(t=>traitWord(t,fem));
+ const lines=[
+  'Tu es professeur d’EPS au collège ou au lycée. Rédige l’appréciation du bulletin d’un élève pour la période « '+periodName+' ».',
+  'Contraintes : 2 à 3 phrases, 300 caractères au maximum, en français, ton bienveillant, précis et professionnel ; accorde tout au '+(fem?'féminin (une élève)':st.sex==='G'?'masculin (un élève)':'masculin ou au féminin de façon neutre')+'.',
+  'Écris [PRÉNOM] à la place du prénom (une fois au plus). N’invente aucun fait. Ne cite pas de note chiffrée. Réponds uniquement par le texte de l’appréciation.',
+  'Données :',
+  '- Moyenne de la période : '+(f.avg==null?'pas assez de notes':avgFmt(f.avg)+'/20')+(f.prevAvg!=null?' (période précédente : '+avgFmt(f.prevAvg)+'/20)':''),
+  '- Activités pratiquées : '+(f.practiced.join(', ')||'non renseignées')+(f.acts.length?' ; résultats : '+f.acts.map(x=>x.n+' '+avgFmt(x.v)+'/20').join(', '):''),
+  '- Assiduité : '+f.abs+' absence(s), '+f.late+' retard(s), '+f.kit+' oubli(s) de tenue sur '+f.sessions+' séances',
+  f.inapt.length?'- A eu une inaptitude sur la période':'',
+  pos.length?'- Qualités à souligner : '+pos.join(', '):'',
+  neg.length?'- Points à améliorer : '+neg.join(', '):'',
+  settings().aiObs==='1'&&f.obs.length?'- Observations du professeur : '+f.obs.map(o=>o.name).join(' / ').replace(new RegExp([st.first,st.last].filter(Boolean).map(x=>x.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')).join('|'),'gi'),'[PRÉNOM]').slice(0,600):''
+ ];
+ return lines.filter(Boolean).join('\n');
+}
+async function aiGenerate(st,f,periodName,tags){
+ const s=settings(),model=(s.aiModel||'gemini-2.5-flash').trim();
+ const body={contents:[{role:'user',parts:[{text:aiPrompt(st,f,periodName,tags)}]}],generationConfig:{temperature:0.8,maxOutputTokens:1024,...(/flash/i.test(model)?{thinkingConfig:{thinkingBudget:0}}:{})}};
+ const r=await fetch('https://generativelanguage.googleapis.com/v1beta/models/'+encodeURIComponent(model)+':generateContent',{method:'POST',headers:{'Content-Type':'application/json','x-goog-api-key':s.aiKey},body:JSON.stringify(body)});
+ if(!r.ok){const m=r.status===400||r.status===403?'clé d’API ou modèle refusé':r.status===429?'quota dépassé, réessayez plus tard':'erreur '+r.status;throw Error(m)}
+ const j=await r.json(),text=(j.candidates?.[0]?.content?.parts||[]).map(p=>p.text||'').join('').trim();
+ if(!text)throw Error('réponse vide');
+ return text.replace(/^["«\s]+|["»\s]+$/g,'').replace(/\[PR[ÉE]NOM\]/gi,st.first);
+}
+function aiSettings(){
+ const s=settings(),p=panel(view,'Appréciations : génération par IA (Gemini)');
+ el('p','Avec une clé d’API Gemini (Google AI Studio), les brouillons d’appréciations peuvent être rédigés par l’IA. Envoyés à Google : sexe, période, moyennes et activités, assiduité, adjectifs cochés (et vos observations si vous le cochez). Jamais envoyés : nom, prénom, besoins particuliers. La clé reste sur cet appareil (et dans vos sauvegardes).',p,'muted');
+ const f=el('div','',p,'filters');
+ const key=el('input','',el('label','Clé d’API Gemini',f));key.type='password';key.autocomplete='off';key.value=s.aiKey||'';key.placeholder='AIza…';
+ const model=el('input','',el('label','Modèle',f));model.value=s.aiModel||'gemini-2.5-flash';
+ const ob=el('label','',p,'check');const c=el('input','',ob);c.type='checkbox';c.checked=s.aiObs==='1';ob.append(' Inclure mes observations (peuvent contenir des informations personnelles)');
+ const a=el('div','',p,'actions');
+ const save=async()=>{await transaction('settings',t=>t.objectStore('settings').put({...settings(),aiKey:key.value.trim(),aiModel:model.value.trim()||'gemini-2.5-flash',aiObs:c.checked?'1':'0'}));await load()};
+ button('Enregistrer',a,'primary').onclick=async()=>{await save();notify(key.value.trim()?'Réglages Gemini enregistrés.':'Génération par IA désactivée.')};
+ button('Tester',a).onclick=async()=>{await save();if(!aiReady())return notify('Saisissez d’abord une clé.');
+  try{const t=await aiGenerate({id:'test',first:'Alex',sex:'G'},{avg:14,prevAvg:12,acts:[{n:'Badminton',v:14}],practiced:['Badminton'],abs:0,late:0,kit:1,sessions:10,inapt:[],obs:[]},'Trimestre 1',['investi']);notify('Gemini répond : « '+t.slice(0,90)+'… »')}catch(e){notify('Gemini : '+e.message+'.')}};
 }
 function appreciationPanel(){
  if(!data.classes.length)return;
  const y=yearOf(today())||data.years[0],periods=periodsOf(y),t=today();
  const p=panel(view,'Préparer les appréciations du bulletin');
- el('p','Un brouillon est proposé pour chaque élève à partir de ses notes, de son assiduité, de ses oublis et de vos observations. Relisez, corrigez, puis enregistrez.',p,'muted');
+ el('p','Un brouillon est proposé pour chaque élève à partir de ses notes, de ses activités, de son assiduité et des adjectifs que vous cochez. Relisez, corrigez, puis enregistrez.',p,'muted');
  const f=el('div','',p,'filters');
  const cs=select(el('label','Classe',f),data.classes.map(c=>[c.id,c.name]));cs.value=draftState?.classId||(find('classes',classFilter)?classFilter:data.classes[0].id);
  const ps=select(el('label','Période',f),[...periods.map(x=>[x.name,x.name]),['year','Année entière']]);
  ps.value=draftState?.period||(periods.find(x=>x.start<=t&&x.end>=t)||periods[0])?.name||'year';
- button('Préparer les brouillons',f,'primary').onclick=()=>{draftState={classId:cs.value,period:ps.value,texts:{}};render()};
+ button('Préparer les brouillons',f,'primary').onclick=()=>{draftState={classId:cs.value,period:ps.value,texts:{},tags:{}};render()};
+ if(!aiReady()){const n=el('p','',p,'small muted');n.append('Rédaction par IA : ');link(n,'settings','configurer Gemini dans Paramètres');n.append('.')}
  if(!draftState)return;
+ draftState.tags??={};
  const period=periods.find(x=>x.name===draftState.period)||null,pname=period?.name||'Année';
+ const pupils=pupilsOf(draftState.classId),cards={};
  const list=el('div','',p,'drafts');
- for(const st of pupilsOf(draftState.classId)){
-  const id='bulletin:'+draftState.period+':'+st.id,saved=find('comments',id),fx=periodFacts(st,period,periods);
-  const text=draftState.texts[st.id]??saved?.name??draftAppreciation(st,fx,pname);draftState.texts[st.id]=text;
+ for(const st of pupils){
+  const id='bulletin:'+draftState.period+':'+st.id,saved=find('comments',id),fx=periodFacts(st,period,periods),fem=st.sex==='F';
+  const tags=draftState.tags[st.id]??=(saved?.tags||'').split(',').filter(Boolean);
+  const text=draftState.texts[st.id]??saved?.name??draftAppreciation(st,fx,pname,0,tags);draftState.texts[st.id]=text;
   const card=el('article','',list,'draft');
-  const h=el('div','',card,'top');avatar(st,h,'sm');link(h,'student='+st.id,label(st),'title');if(saved)el('span','Enregistrée',h,'tag now');
-  el('p',['Moyenne '+avgFmt(fx.avg)+(fx.prevAvg!=null?' (avant '+avgFmt(fx.prevAvg)+')':''),plural(fx.abs,'absence'),plural(fx.kit,'oubli'),plural(fx.late,'retard'),fx.inapt.length?'inaptitude':'',fx.acts.length?fx.acts.map(x=>x.n.split(' · ')[0]+' '+avgFmt(x.v)).join(', '):''].filter(Boolean).join(' · '),card,'muted small');
+  const h=el('div','',card,'top');avatar(st,h,'sm');link(h,'student='+st.id,label(st),'title');el('span',fem?'Fille':st.sex==='G'?'Garçon':'Sexe ?',h,'tag');if(saved)el('span','Enregistrée',h,'tag now');
+  el('p',['Moyenne '+avgFmt(fx.avg)+(fx.prevAvg!=null?' (avant '+avgFmt(fx.prevAvg)+')':''),plural(fx.abs,'absence'),plural(fx.kit,'oubli'),plural(fx.late,'retard'),fx.inapt.length?'inaptitude':''].filter(Boolean).join(' · '),card,'muted small');
+  el('p','Activités : '+(fx.practiced.length?fx.practiced.map(n=>{const a=fx.acts.find(x=>x.n.split(' · ')[0]===n);return n+(a?' ('+avgFmt(a.v)+')':'')}).join(', '):'aucune sur la période'),card,'small acts');
+  // Adjectifs à cocher (accordés selon le sexe)
+  const chips=el('div','',card,'traits');
+  for(const [kind,listT] of [['pos',TRAITS.pos],['neg',TRAITS.neg]]){
+   const g=el('div','',chips,'trait-group '+kind);el('span',kind==='pos'?'+':'−',g,'trait-sign');
+   for(const tr of listT){const b=button(traitWord(tr,fem),g,'trait');b.setAttribute('aria-pressed',tags.includes(tr[0]));
+    b.onclick=()=>{const i=tags.indexOf(tr[0]);if(i<0)tags.push(tr[0]);else tags.splice(i,1);b.setAttribute('aria-pressed',tags.includes(tr[0]));ta.value=draftAppreciation(st,fx,pname,variant,tags);ta.oninput()}}
+  }
   if(fx.obs.length){const d=el('details','',card);el('summary',plural(fx.obs.length,'observation'),d);for(const o of fx.obs)el('p',(o.date?fmtDate(o.date)+' · ':'')+o.name,d,'small')}
   const ta=el('textarea','',card);ta.rows=3;ta.value=text;
   const cnt=el('span',text.length+' caractères',card,'small muted');
   ta.oninput=()=>{draftState.texts[st.id]=ta.value;cnt.textContent=ta.value.length+' caractères'};
   const r=el('div','',card,'actions');
-  let variant=0;button('Autre formulation',r,'small').onclick=()=>{ta.value=draftAppreciation(st,fx,pname,++variant);ta.oninput()};
+  let variant=0;button('Autre formulation',r,'small').onclick=()=>{ta.value=draftAppreciation(st,fx,pname,++variant,tags);ta.oninput()};
+  const gen=async()=>{ai.disabled=true;ai.textContent='Rédaction…';try{ta.value=await aiGenerate(st,fx,pname,tags);ta.oninput();return true}catch(e){notify('IA : '+e.message+'.');return false}finally{ai.disabled=false;ai.textContent='Générer avec l’IA'}};
+  const ai=button('Générer avec l’IA',r,'small primary');ai.hidden=!aiReady();ai.onclick=gen;
+  cards[st.id]=gen;
  }
  const a=el('div','',p,'actions');
+ if(aiReady())button('Générer toute la classe avec l’IA',a).onclick=async e=>{const b=e.currentTarget;b.disabled=true;let n=0;
+  for(const st of pupils){b.textContent='IA : '+(n+1)+' / '+pupils.length+'…';if(!await cards[st.id]())break;n++}
+  b.disabled=false;b.textContent='Générer toute la classe avec l’IA';notify(plural(n,'appréciation rédigée','appréciations rédigées')+' par l’IA : relisez-les avant d’enregistrer.')};
  button('Enregistrer toutes les appréciations',a,'primary').onclick=async()=>{
-  const rows=pupilsOf(draftState.classId).map(st=>({id:'bulletin:'+draftState.period+':'+st.id,student:st.id,name:(draftState.texts[st.id]||'').trim(),date:today(),period:pname})).filter(r=>r.name);
+  const rows=pupils.map(st=>({id:'bulletin:'+draftState.period+':'+st.id,student:st.id,name:(draftState.texts[st.id]||'').trim(),date:today(),period:pname,tags:(draftState.tags[st.id]||[]).join(',')})).filter(r=>r.name);
   await transaction('comments',tx=>rows.forEach(r=>tx.objectStore('comments').put(r)));await load();
   notify(plural(rows.length,'appréciation enregistrée','appréciations enregistrées')+'.');render();
  };
  button('Exporter en CSV',a).onclick=()=>{
-  const csv=[['Nom','Prénom','Appréciation'],...pupilsOf(draftState.classId).map(st=>[st.last,st.first,draftState.texts[st.id]||''])].map(r=>r.map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(';')).join('\n');
+  const csv=[['Nom','Prénom','Appréciation'],...pupils.map(st=>[st.last,st.first,draftState.texts[st.id]||''])].map(r=>r.map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(';')).join('\n');
   const l=document.createElement('a');l.href=URL.createObjectURL(new Blob(['﻿'+csv],{type:'text/csv'}));l.download='appreciations-'+(find('classes',draftState.classId)?.name||'')+'-'+pname+'.csv';l.click();setTimeout(()=>URL.revokeObjectURL(l.href),1000);
  };
  button('Fermer',a).onclick=()=>{draftState=null;render()};
