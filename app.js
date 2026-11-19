@@ -1,14 +1,14 @@
 // Numéro de version affiché dans l'application : l'incrémenter à chaque nouvelle livraison
 // (et le reporter dans sw.js pour renouveler le cache hors ligne).
-const APP_VERSION=16;
+const APP_VERSION=17;
 
 // ---------- Structure de l'application ----------
-const pages={home:'Tableau de bord',calendar:'Calendrier',sessions:'Séances',attendance:'Appel',classes:'Classes',students:'Élèves',groups:'Groupes',cycles:'Cycles',restrictions:'Inaptitudes',grades:'Évaluations',comments:'Appréciations',observations:'Observations',planning:'Paramètres du calendrier',absences:'Absences',settings:'Paramètres',student:'Fiche élève',session:'Séance',boards:'Tableaux',board:'Tableau',module:'Application',apps:'Applications',years:'Années scolaires',backup:'Sauvegardes'};
+const pages={home:'Tableau de bord',calendar:'Calendrier',sessions:'Séances',attendance:'Appel',classes:'Classes',students:'Élèves',groups:'Groupes',cycles:'Cycles',restrictions:'Inaptitudes',grades:'Évaluations',comments:'Appréciations',observations:'Observations',planning:'Paramètres du calendrier',absences:'Absences',settings:'Paramètres',student:'Fiche élève',session:'Séance',boards:'Tableaux',board:'Tableau',module:'Application',apps:'Applications',averages:'Moyennes',years:'Années scolaires',backup:'Sauvegardes'};
 const navLabels={planning:'Emploi du temps'};
 const navGroups=[
  ['Quotidien',['home','calendar','sessions','attendance','boards','apps']],
  ['Mes élèves',['classes','students','groups','cycles','restrictions']],
- ['Suivi',['absences','grades','comments','observations']],
+ ['Suivi',['absences','grades','averages','comments','observations']],
  ['Réglages',['settings','planning','years','backup']]
 ];
 const icons={
@@ -28,6 +28,8 @@ const icons={
  observations:'M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12zM12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z',
  backup:'M12 4v11M7 10l5 5 5-5M5 20h14',
  modules:'M9 3h6v4a2 2 0 1 0 4 0h2v6h-2a2 2 0 1 0 0 4h2v4H3V3h2a2 2 0 1 0 4 0z',
+ averages:'M4 20V10M10 20V4M16 20v-7M22 20H2',
+ lock:'M6 11h12v10H6zM8 11V7a4 4 0 0 1 8 0v4',
  apps:'M9 3h6v4a2 2 0 1 0 4 0h2v6h-2a2 2 0 1 0 0 4h2v4H3V3h2a2 2 0 1 0 4 0z',
  boards:'M3 4h18v12H3zM8 20h8M12 16v4M7 9h.01M12 11h.01M16 8h.01',
  absences:'M4 5h16v16H4zM4 10h16M8 3v4M16 3v4M9.5 13.5l5 5M14.5 13.5l-5 5',
@@ -243,6 +245,7 @@ function buildNav(){
   const g=el('div','',nav,'nav-group');el('span',title,g);
   for(const k of keys){const a=link(g,k,'');icon(k,a);el('span',navLabels[k]||pages[k],a,'label');if(badges[k])el('span',badges[k],a,'badge').setAttribute('aria-label',badges[k]+' à traiter');a.setAttribute('aria-current',k===current?'page':'false')}
  }
+ if(lockOn()){const b=el('button','',nav,'nav-lock');b.type='button';icon('lock',b);el('span','Verrouiller',b,'label');b.onclick=lockNow}
 }
 document.querySelector('time').textContent=new Intl.DateTimeFormat('fr',{dateStyle:'full'}).format(new Date());
 document.querySelector('.version').textContent='Version '+APP_VERSION;
@@ -261,7 +264,7 @@ function render(){
  if(q){document.querySelector('h1').textContent='Recherche';return renderSearch(q)}
  document.querySelector('h1').textContent=pages[k];
  document.title=pages[k]+' · EPS Manager';
- ({home:renderHome,calendar:renderCalendar,planning:renderPlanning,attendance:renderAttendance,backup:renderBackup,absences:renderAbsences,settings:renderSettings,student:()=>renderStudent(decodeURIComponent(param||'')),session:()=>renderSession(decodeURIComponent(param||'')),boards:renderBoards,board:()=>renderBoard(decodeURIComponent(param||'')),module:()=>renderModule(decodeURIComponent(param||'')),apps:renderApps}[k]||renderList)(k);
+ ({home:renderHome,calendar:renderCalendar,planning:renderPlanning,attendance:renderAttendance,backup:renderBackup,absences:renderAbsences,settings:renderSettings,student:()=>renderStudent(decodeURIComponent(param||'')),session:()=>renderSession(decodeURIComponent(param||'')),boards:renderBoards,board:()=>renderBoard(decodeURIComponent(param||'')),module:()=>renderModule(decodeURIComponent(param||'')),apps:renderApps,averages:renderAverages}[k]||renderList)(k);
 }
 
 // ---------- Tableau de bord ----------
@@ -539,20 +542,31 @@ function pupilSheet(p,session,current){
 // ---------- Sauvegardes ----------
 function renderBackup(){
  const p=panel(view,'Exporter');
- el('p','La sauvegarde JSON contient les données en clair (noms, notes, inaptitudes). Conservez-la dans un emplacement protégé.',p,'notice');
+ el('p','La sauvegarde contient toutes les données en clair : celles d’EPS Manager (élèves, photos, notes, inaptitudes…) et celles des applications associées (Demi-fond, Co-évaluation, Évaluations, documents des tableaux). Conservez-la dans un emplacement protégé.',p,'notice');
  const b=lastBackup();el('p',b?'Dernière sauvegarde : '+new Intl.DateTimeFormat('fr',{dateStyle:'long',timeStyle:'short'}).format(new Date(b)):'Aucune sauvegarde exportée depuis cet appareil.',p,'muted');
- const btn=button('Exporter la sauvegarde',p,'primary');btn.style.alignSelf='start';
- btn.onclick=()=>{const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify({version:2,data})],{type:'application/json'}));a.download='eps-manager-'+today()+'.json';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);try{localStorage.setItem('eps-last-backup',new Date().toISOString())}catch{}render();notify('Sauvegarde exportée.')};
+ const btn=button('Exporter la sauvegarde complète',p,'primary');btn.style.alignSelf='start';
+ btn.onclick=async()=>{
+  btn.disabled=true;btn.textContent='Préparation…';
+  try{
+   const extra=await collectExtra(),json=JSON.stringify({version:3,createdAt:new Date().toISOString(),appVersion:APP_VERSION,data,extra});
+   const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([json],{type:'application/json'}));a.download='eps-manager-'+today()+'.json';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+   try{localStorage.setItem('eps-last-backup',new Date().toISOString())}catch{}
+   const apps=appsInBackup(extra);render();notify('Sauvegarde exportée ('+mb(json.length)+')'+(apps.length?' avec '+apps.join(', '):'')+'.');
+  }catch{notify('Sauvegarde impossible.');btn.disabled=false;btn.textContent='Exporter la sauvegarde complète'}
+ };
  const r=panel(view,'Restaurer');
- el('p','La restauration remplace toutes les données de cet appareil.',r,'muted');
+ el('p','La restauration remplace toutes les données de cet appareil, celles des applications comprises.',r,'muted');
  const input=el('input','',el('label','Fichier de sauvegarde (.json)',r));input.type='file';input.accept='.json,application/json';
  input.onchange=async()=>{try{
   const b=JSON.parse(await input.files[0].text());
-  if(![1,2].includes(b.version)||!b.data||typeof b.data!=='object')throw Error();
+  if(![1,2,3].includes(b.version)||!b.data||typeof b.data!=='object')throw Error();
   for(const key of ['holidays','timetable','settings','results','boards'])b.data[key]??=[];
   if(!stores.every(key=>Array.isArray(b.data[key])&&b.data[key].every(r=>r&&typeof r.id==='string'&&Object.values(r).every(v=>typeof v==='string'))))throw Error();
-  if(!confirm('Remplacer toutes les données locales par cette sauvegarde ?'))return;
-  await transaction(stores,t=>{for(const key of stores){const st=t.objectStore(key);st.clear();b.data[key].forEach(r=>st.add(r))}});await load();await migrateAttendance();render();notify('Sauvegarde restaurée.');
+  const apps=appsInBackup(b.extra);
+  if(!confirm('Remplacer toutes les données de cet appareil par cette sauvegarde'+(b.createdAt?' du '+new Date(b.createdAt).toLocaleDateString('fr'):'')+' ?'+(apps.length?'\n\nElle contient aussi les données de : '+apps.join(', ')+'.':'\n\nCette sauvegarde ne contient pas de données d’applications (ancienne version).')))return;
+  await transaction(stores,t=>{for(const key of stores){const st=t.objectStore(key);st.clear();b.data[key].forEach(r=>st.add(r))}});
+  if(b.extra)await restoreExtra(b.extra);
+  await load();await migrateAttendance();modulesReady=discoverModules();render();notify('Sauvegarde restaurée'+(apps.length?' avec '+apps.join(', '):'')+'.');
  }catch{notify('Restauration impossible. Vérifiez le fichier.')}};
  const s=panel(view,'Données d’exemple');
  el('p','Deux classes (5e B et 4e A) avec élèves, emploi du temps, vacances, cycles, appels passés, notes et observations, pour découvrir l’application. Remplace les données actuelles.',s,'muted');
@@ -583,6 +597,7 @@ async function loadSample(){
  const t=today();
  const restrictions=[{id:'ex-r1',student:'ex-st1',start:addDays(t,-3),end:addDays(t,10),name:'Entorse cheville : pas de course ni de saut. Arbitrage, observation.'},{id:'ex-r2',student:'ex-st30',start:addDays(t,-40),end:addDays(t,-20),name:'Fracture du poignet : pas d’appui sur le bras gauche.'}];
  const grades=[];students.forEach((s,i)=>{grades.push({id:'ex-g'+i,student:s.id,name:s.classId==='ex-5B'?'Demi-fond · 3×500 m':'Handball · match',grade:String(Math.round((8+rnd()*11)*2)/2),date:'2026-10-13'})});
+ students.forEach((s,i)=>{grades.push({id:'ex-g2-'+i,student:s.id,name:s.classId==='ex-5B'?'Badminton · tournoi':'Natation · 50 m',grade:String(Math.round((7+rnd()*12)*2)/2),date:'2026-11-12'})});
  const observations=[['ex-st0','Très bonne gestion de l’effort, conseille ses camarades.'],['ex-st3','Manque d’engagement en fin de séance, à encourager.'],['ex-st5','Progrès nets sur le service long au badminton.'],['ex-st26','Excellente coordination en natation, peut viser le niveau 3.'],['ex-st31','Refuse de passer dans l’eau, à voir avec la famille.']].map(([student,name],i)=>({id:'ex-ob'+i,student,name,date:addDays(t,-3-i*6)}));
  const comments=[['ex-st0','Élève moteur et respectueux. Très bon trimestre.'],['ex-st7','Des efforts, mais des oublis de tenue trop fréquents.'],['ex-st24','Investie et volontaire, de beaux progrès.']].map(([student,name],i)=>({id:'ex-co'+i,student,name,date:'2026-12-10'}));
  await transaction(stores,tx=>{
@@ -768,6 +783,8 @@ async function remove(k,id){
 
 // ---------- Paramètres de l'application ----------
 function renderSettings(){
+ lockSettings();
+ periodsSettings();
  const cfg=settings();
  const p=panel(view,'Alertes « À surveiller »');
  el('p','Choisissez quand un élève apparaît dans le bloc « À surveiller » du tableau de bord.',p,'muted');
@@ -892,7 +909,7 @@ function renderStudent(id){
  kpi('Absences',st['Absent'],'depuis le début de l’année',st['Absent']>=3);
  kpi('Retards',st['Retard'],'');
  kpi('Oublis',st['Oubli de tenue']+st['Oubli de chaussures'],st['Oubli de tenue']+' tenue · '+st['Oubli de chaussures']+' chaussures',st['Oubli de tenue']+st['Oubli de chaussures']>=3);
- kpi('Moyenne',avg==null?'—':avg.toFixed(1).replace('.',','),plural(grades.length,'note'));
+ kpi('Moyenne (année)',avgFmt(studentAverage(id,null)),periodsOf(y).map(p=>p.name.replace(/^Trimestre /,'T').replace(/^Semestre /,'S')+' '+avgFmt(studentAverage(id,p))).join(' · ')||plural(grades.length,'note'));
 
  // Assiduité par cycle
  const pa=panel(view,'Assiduité');
@@ -1285,6 +1302,7 @@ async function renderModule(id){
  sync.onclick=async()=>{sync.disabled=true;await syncModule(m);refresh();sync.disabled=false};
  try{const a=await adapterOf(m);if(a?.beforeOpen)await a.beforeOpen(moduleContext(m))}catch{notify('Les classes n’ont pas pu être recopiées dans '+m.name+'.')}
  if(!frame.isConnected)return;
+ frame.addEventListener('load',()=>{try{['pointerdown','keydown','touchstart'].forEach(ev=>frame.contentWindow.addEventListener(ev,noteActivity,{capture:true,passive:true}))}catch{}});
  frame.src=m.base+m.entry;openModule=m;refresh();
  if(pick)pick.onchange=async()=>{moduleFocus=pick.value?{classId:pick.value}:null;status.textContent='Préparation de la classe…';
   try{const a=await adapterOf(m);if(a?.beforeOpen)await a.beforeOpen(moduleContext(m))}catch{}
@@ -1496,6 +1514,256 @@ function icalPanel(){
  }
 }
 
+// ---------- Code de verrouillage ----------
+// Code à 4 chiffres demandé à l'ouverture, après une inactivité réglable et quand on quitte l'application.
+// Seule une empreinte (SHA-256 salée) est enregistrée ; une clé de secours, montrée une fois, permet de débloquer.
+// C'est un verrou d'interface : les données restent sur l'appareil, non chiffrées.
+let locked=false,lastActivity=Date.now(),hiddenAt=0,lockFails=0,lockWaitUntil=0;
+const lockOn=()=>!!settings().lockHash;
+async function sha(text){const b=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(text));return [...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,'0')).join('')}
+const randomHex=n=>[...crypto.getRandomValues(new Uint8Array(n))].map(x=>x.toString(16).padStart(2,'0')).join('');
+function recoveryKey(){const abc='ABCDEFGHJKLMNPQRSTUVWXYZ23456789',r=crypto.getRandomValues(new Uint8Array(12));return [...r].map(x=>abc[x%abc.length]).join('').replace(/(.{4})(?=.)/g,'$1-')}
+async function checkCode(code){const s=settings();return !!s.lockHash&&await sha(s.lockSalt+':'+code)===s.lockHash}
+async function saveLock(code,delay){const salt=randomHex(16),key=recoveryKey();
+ const hash=await sha(salt+':'+code),rec=await sha(salt+':'+key.replace(/-/g,''));
+ await transaction('settings',t=>t.objectStore('settings').put({...settings(),lockSalt:salt,lockHash:hash,lockDelay:delay,recoveryHash:rec}));await load();return key}
+async function clearLock(){await transaction('settings',t=>t.objectStore('settings').put({...settings(),lockSalt:'',lockHash:'',recoveryHash:''}));await load()}
+function noteActivity(){lastActivity=Date.now()}
+['pointerdown','keydown','wheel','touchstart'].forEach(ev=>addEventListener(ev,noteActivity,{capture:true,passive:true}));
+setInterval(()=>{const d=settings().lockDelay;if(lockOn()&&!locked&&/^\d+$/.test(d||'')&&Number(d)>0&&Date.now()-lastActivity>Number(d)*60000)lockNow()},15000);
+document.addEventListener('visibilitychange',()=>{
+ if(!lockOn()||locked)return;const d=settings().lockDelay||'5';
+ if(document.hidden){hiddenAt=Date.now();if(d==='0')lockNow()}
+ else if(hiddenAt&&d!=='never'&&Date.now()-hiddenAt>Number(d)*60000)lockNow();
+});
+// Écran de verrouillage : clavier numérique, 4 chiffres, temporisation après 5 erreurs, clé de secours.
+function lockNow(){
+ if(!lockOn()||locked)return;locked=true;document.body.classList.add('locked');document.activeElement?.blur?.();
+ document.querySelectorAll('dialog[open]').forEach(d=>d.close());
+ const o=el('div','',document.body,'lock-screen');o.setAttribute('role','dialog');o.setAttribute('aria-modal','true');o.setAttribute('aria-label','Application verrouillée');
+ const box=el('div','',o,'lock-box');
+ el('span','E',box,'logo');el('h2','EPS Manager est verrouillé',box);
+ const msg=el('p','Saisissez votre code',box,'muted');
+ const dots=el('div','',box,'lock-dots');for(let i=0;i<4;i++)el('i','',dots);
+ let code='';
+ const paint=()=>[...dots.children].forEach((d,i)=>d.classList.toggle('on',i<code.length));
+ const tryCode=async()=>{
+  if(Date.now()<lockWaitUntil){msg.textContent='Trop d’essais : patientez '+Math.ceil((lockWaitUntil-Date.now())/1000)+' s.';code='';paint();return}
+  if(await checkCode(code)){unlock();return}
+  lockFails++;code='';paint();dots.classList.remove('shake');void dots.offsetWidth;dots.classList.add('shake');
+  if(lockFails>=5){lockWaitUntil=Date.now()+30000;lockFails=0;msg.textContent='Trop d’essais : patientez 30 s.'}else msg.textContent='Code incorrect';
+ };
+ const press=k=>{if(k==='del'){code=code.slice(0,-1);paint();return}if(code.length<4){code+=k;paint();if(code.length===4)setTimeout(tryCode,120)}};
+ const pad=el('div','',box,'lock-pad');
+ for(const k of ['1','2','3','4','5','6','7','8','9','?','0','del']){
+  const b=button(k==='del'?'⌫':k==='?'?'Code oublié':k,pad,k==='?'?'lock-forgot':'');
+  if(k==='del')b.setAttribute('aria-label','Effacer');
+  b.onclick=k==='?'?forgot:()=>press(k);
+ }
+ o.onkeydown=e=>{if(/^\d$/.test(e.key))press(e.key);else if(e.key==='Backspace')press('del')};
+ o.tabIndex=-1;setTimeout(()=>o.focus(),50);
+ function forgot(){
+  box.querySelector('.lock-pad').hidden=true;dots.hidden=true;
+  msg.textContent='Saisissez la clé de secours notée à la création du code (ex. ABCD-EFGH-JKLM).';
+  const f=el('form','',box,'lock-recover');const inp=el('input','',f);inp.autocomplete='off';inp.placeholder='XXXX-XXXX-XXXX';inp.setAttribute('aria-label','Clé de secours');
+  el('button','Débloquer',f,'primary');const back=button('Retour',f);
+  back.onclick=()=>{f.remove();box.querySelector('.lock-pad').hidden=false;dots.hidden=false;msg.textContent='Saisissez votre code'};
+  f.onsubmit=async e=>{e.preventDefault();const s=settings(),v=inp.value.toUpperCase().replace(/[^A-Z0-9]/g,'');
+   if(s.recoveryHash&&await sha(s.lockSalt+':'+v)===s.recoveryHash){await clearLock();unlock();render();notify('Code supprimé grâce à la clé de secours. Définissez un nouveau code dans Paramètres.')}
+   else{msg.textContent='Clé de secours incorrecte.';inp.select()}};
+  inp.focus();
+ }
+ function unlock(){locked=false;lockFails=0;lastActivity=Date.now();o.remove();document.body.classList.remove('locked')}
+}
+function lockSettings(){
+ const s=settings(),p=panel(view,'Code de verrouillage');
+ el('p','Un code à 4 chiffres protège l’accès aux données des élèves (photos, inaptitudes, notes) : il est demandé à l’ouverture, après une période d’inactivité et quand on revient dans l’application.',p,'muted');
+ const delays=[['0','Dès que je quitte l’application'],['2','Après 2 min d’inactivité'],['5','Après 5 min d’inactivité'],['10','Après 10 min d’inactivité'],['30','Après 30 min d’inactivité'],['never','Seulement à l’ouverture (et à la demande)']];
+ const a=el('div','',p,'actions');
+ if(!s.lockHash){button('Définir un code',a,'primary').onclick=()=>codeSheet(false);return}
+ const f=el('div','',p,'filters');
+ const sel=select(el('label','Verrouillage automatique',f),delays);sel.value=s.lockDelay||'5';
+ sel.onchange=async()=>{await transaction('settings',t=>t.objectStore('settings').put({...settings(),lockDelay:sel.value}));await load();notify('Réglage enregistré.')};
+ button('Verrouiller maintenant',a,'primary').onclick=lockNow;
+ button('Changer le code',a).onclick=()=>codeSheet(true);
+ button('Supprimer le code',a,'danger').onclick=()=>{
+  const d=sheet('Supprimer le code');const inp=el('input','',el('label','Code actuel',d));inp.type='password';inp.inputMode='numeric';inp.maxLength=4;
+  const ok=button('Supprimer',el('div','',d,'actions'),'danger');ok.onclick=async()=>{if(!await checkCode(inp.value))return notify('Code incorrect.');await clearLock();d.close();render();notify('Code supprimé.')};
+  d.showModal();inp.focus();
+ };
+ function codeSheet(change){
+  const d=sheet(change?'Changer le code':'Définir un code');
+  const field=lbl=>{const i=el('input','',el('label',lbl,d));i.type='password';i.inputMode='numeric';i.maxLength=4;i.pattern='\\d{4}';i.autocomplete='off';return i};
+  const cur=change?field('Code actuel'):null,c1=field('Nouveau code (4 chiffres)'),c2=field('Confirmer le code');
+  const dl=select(el('label','Verrouillage automatique',d),delays);dl.value=s.lockDelay||'5';
+  const ok=button('Enregistrer',el('div','',d,'actions'),'primary');
+  ok.onclick=async()=>{
+   if(cur&&!await checkCode(cur.value))return notify('Code actuel incorrect.');
+   if(!/^\d{4}$/.test(c1.value))return notify('Le code doit comporter 4 chiffres.');
+   if(c1.value!==c2.value)return notify('Les deux codes ne correspondent pas.');
+   const key=await saveLock(c1.value,dl.value);d.close();
+   const k=sheet('Clé de secours');
+   el('p','Notez cette clé et gardez-la hors de la tablette. Elle permet de débloquer l’application si vous oubliez le code. Elle ne sera plus affichée.',k);
+   el('p',key,k,'recovery-key');
+   const cb=el('label','',k,'check');const c=el('input','',cb);c.type='checkbox';cb.append(' J’ai noté la clé de secours');
+   const done=button('Terminer',el('div','',k,'actions'),'primary');done.disabled=true;c.onchange=()=>{done.disabled=!c.checked};
+   done.onclick=()=>{k.close();render();notify('Code de verrouillage activé.')};
+   k.oncancel=e=>e.preventDefault();k.showModal();
+  };
+  d.showModal();(cur||c1).focus();
+ }
+}
+
+// ---------- Sauvegarde complète : EPS Manager + données des applications ----------
+// Les applications associées sont servies depuis la même adresse : leurs données (localStorage, bases IndexedDB)
+// sont dans le même espace que celles d'EPS Manager. La sauvegarde les reprend toutes, sans réglage par application.
+const KNOWN_DBS=['mon-tableau-blanc-documents','scan-document-eps-v1','eps-hub-photos'];
+async function blobsOut(v){
+ if(v instanceof Blob)return {__epsBlob:await new Promise((ok,no)=>{const r=new FileReader();r.onload=()=>ok(r.result);r.onerror=()=>no(r.error);r.readAsDataURL(v)}),type:v.type,name:v.name||''};
+ if(Array.isArray(v))return Promise.all(v.map(blobsOut));
+ if(v&&typeof v==='object'&&v.constructor===Object){const o={};for(const [k,x] of Object.entries(v))o[k]=await blobsOut(x);return o}
+ return v;
+}
+async function blobsIn(v){
+ if(v&&typeof v==='object'&&typeof v.__epsBlob==='string'){const b=await (await fetch(v.__epsBlob)).blob();return v.name?new File([b],v.name,{type:v.type||b.type}):b}
+ if(Array.isArray(v))return Promise.all(v.map(blobsIn));
+ if(v&&typeof v==='object'&&v.constructor===Object){const o={};for(const [k,x] of Object.entries(v))o[k]=await blobsIn(x);return o}
+ return v;
+}
+const reqP=r=>new Promise((ok,no)=>{r.onsuccess=()=>ok(r.result);r.onerror=()=>no(r.error)});
+async function dumpDB(name){
+ const db=await new Promise((ok,no)=>{const r=indexedDB.open(name);r.onupgradeneeded=()=>{r.transaction.abort()};r.onsuccess=()=>ok(r.result);r.onerror=()=>no(r.error)}).catch(()=>null);
+ if(!db)return null;
+ try{
+  const out={name,version:db.version,stores:[]};
+  for(const s of db.objectStoreNames){
+   const st=db.transaction(s).objectStore(s);
+   const meta={name:s,keyPath:st.keyPath,autoIncrement:st.autoIncrement,indexes:[...st.indexNames].map(n=>{const i=st.index(n);return {name:n,keyPath:i.keyPath,unique:i.unique,multiEntry:i.multiEntry}}),records:[]};
+   const [keys,vals]=await Promise.all([reqP(st.getAllKeys()),reqP(st.getAll())]);
+   for(let i=0;i<keys.length;i++)meta.records.push([keys[i],await blobsOut(vals[i])]);
+   out.stores.push(meta);
+  }
+  return out;
+ }finally{db.close()}
+}
+async function restoreDB(dump){
+ await new Promise(ok=>{const r=indexedDB.deleteDatabase(dump.name);r.onsuccess=r.onerror=r.onblocked=()=>ok()});
+ const db=await new Promise((ok,no)=>{const r=indexedDB.open(dump.name,dump.version||1);
+  r.onupgradeneeded=()=>{for(const s of dump.stores){const st=r.result.createObjectStore(s.name,{keyPath:s.keyPath??undefined,autoIncrement:!!s.autoIncrement});for(const i of s.indexes||[])st.createIndex(i.name,i.keyPath,{unique:!!i.unique,multiEntry:!!i.multiEntry})}};
+  r.onsuccess=()=>ok(r.result);r.onerror=()=>no(r.error)});
+ try{
+  for(const s of dump.stores){
+   const recs=await Promise.all(s.records.map(async([k,v])=>[k,await blobsIn(v)]));
+   await new Promise((ok,no)=>{const t=db.transaction(s.name,'readwrite'),st=t.objectStore(s.name);for(const [k,v] of recs){if(s.keyPath==null)st.put(v,k);else st.put(v)}t.oncomplete=ok;t.onerror=t.onabort=()=>no(t.error)});
+  }
+ }finally{db.close()}
+}
+async function collectExtra(){
+ const ls={};for(let i=0;i<localStorage.length;i++){const k=localStorage.key(i);if(k!=null)ls[k]=localStorage.getItem(k)}
+ let names=KNOWN_DBS;
+ try{if(indexedDB.databases)names=[...new Set([...(await indexedDB.databases()).map(d=>d.name).filter(Boolean),...KNOWN_DBS])]}catch{}
+ const dbs=[];for(const n of names.filter(n=>n!=='eps-manager')){try{const d=await dumpDB(n);if(d&&d.stores.length)dbs.push(d)}catch{}}
+ return {localStorage:ls,indexedDB:dbs};
+}
+async function restoreExtra(x){
+ for(const [k,v] of Object.entries(x?.localStorage||{}))if(typeof v==='string')try{localStorage.setItem(k,v)}catch{}
+ for(const d of x?.indexedDB||[])if(d&&typeof d.name==='string'&&d.name!=='eps-manager'&&Array.isArray(d.stores))await restoreDB(d);
+}
+const appsInBackup=x=>{const l=Object.keys(x?.localStorage||{}),names=[];
+ if(l.some(k=>/^(eps-hub|df-scan|cc_|chronoCarnet)/.test(k)))names.push('Demi-fond');if(l.includes('df-coeval-v1'))names.push('Co-évaluation Bac');
+ if(l.includes('eps-evaluations-v1'))names.push('Évaluations');if(l.some(k=>k.startsWith('eps-manager:')))names.push('applications du kit');
+ if((x?.indexedDB||[]).some(d=>d.name==='mon-tableau-blanc-documents'))names.push('documents des tableaux');return names};
+const mb=n=>(n/1048576).toFixed(n<1048576?2:1).replace('.',',')+' Mo';
+
+// ---------- Périodes, coefficients et moyennes ----------
+// Périodes de notation par année (trimestres ou semestres, dates modifiables) ; coefficient par évaluation
+// (par intitulé, 0 = non comptée) ; moyennes pondérées par période, par élève et par classe.
+const parseSetting=(k,d)=>{try{return JSON.parse(settings()[k]||'')??d}catch{return d}};
+function presetPeriods(y,kind){
+ const y1=y.start.slice(0,4),y2=y.end.slice(0,4);
+ return kind==='sem'?[{name:'Semestre 1',start:y.start,end:y2+'-01-31'},{name:'Semestre 2',start:y2+'-02-01',end:y.end}]
+  :[{name:'Trimestre 1',start:y.start,end:y1+'-11-30'},{name:'Trimestre 2',start:y1+'-12-01',end:y2+'-03-15'},{name:'Trimestre 3',start:y2+'-03-16',end:y.end}];
+}
+function periodsOf(y){if(!y)return [];const all=parseSetting('periods',{});return Array.isArray(all[y.id])&&all[y.id].length?all[y.id]:presetPeriods(y,'tri')}
+const coefOf=name=>{const c=parseSetting('coefs',{})[name];return c==null||!isFinite(Number(c))?1:Number(c)};
+const avgFmt=v=>v==null?'—':(Math.round(v*100)/100).toFixed(2).replace(/\.?0+$/,'').replace('.',',');
+const inPeriod=(g,p)=>!p||(g.date&&g.date>=p.start&&g.date<=p.end);
+// Moyenne pondérée d'un élève sur une période (une évaluation notée plusieurs fois compte pour sa moyenne).
+function studentAverage(studentId,period){
+ const by={};for(const g of data.grades)if(g.student===studentId&&inPeriod(g,period)&&isFinite(Number(g.grade)))(by[g.name]??=[]).push(Number(g.grade));
+ let s=0,w=0;for(const [name,list] of Object.entries(by)){const c=coefOf(name);if(c>0){s+=list.reduce((a,b)=>a+b,0)/list.length*c;w+=c}}
+ return w?s/w:null;
+}
+function periodsSettings(){
+ const y=yearOf(today())||data.years[0];if(!y)return;
+ const list=periodsOf(y).map(p=>({...p}));
+ const p=panel(view,'Périodes de notation · '+y.name);
+ el('p','Les moyennes sont calculées par période d’après la date de chaque note.',p,'muted');
+ const a=el('div','',p,'actions');
+ const save=async rows=>{const all=parseSetting('periods',{});all[y.id]=rows;await transaction('settings',t=>t.objectStore('settings').put({...settings(),periods:JSON.stringify(all)}));await load();render();notify('Périodes enregistrées.')};
+ button('Trimestres',a).onclick=()=>save(presetPeriods(y,'tri'));
+ button('Semestres',a).onclick=()=>save(presetPeriods(y,'sem'));
+ const grid=el('div','',p,'period-grid');
+ list.forEach((r,i)=>{
+  const row=el('div','',grid,'period-row');
+  const n=el('input','',el('label','Nom',row));n.value=r.name;n.oninput=()=>{r.name=n.value};
+  const s=el('input','',el('label','Début',row));s.type='date';s.value=r.start;s.onchange=()=>{r.start=s.value};
+  const e=el('input','',el('label','Fin',row));e.type='date';e.value=r.end;e.onchange=()=>{r.end=e.value};
+ });
+ const b=el('div','',p,'actions');
+ button('Enregistrer les dates',b,'primary').onclick=()=>{if(list.some(r=>!r.name.trim()||!r.start||!r.end||r.end<r.start))return notify('Vérifiez les noms et les dates.');save(list)};
+}
+let avgPeriod='';
+function renderAverages(){
+ if(!data.classes.length){el('p','Aucune classe pour le moment.',view,'empty');return}
+ if(!find('classes',classFilter))classFilter=data.classes[0].id;
+ const y=yearOf(today())||data.years[0],periods=periodsOf(y),t=today();
+ if(!avgPeriod||(avgPeriod!=='year'&&!periods.some(p=>p.name===avgPeriod)))avgPeriod=(periods.find(p=>p.start<=t&&p.end>=t)||periods[0])?.name||'year';
+ const period=periods.find(p=>p.name===avgPeriod)||null;
+ const f=el('div','',view,'filters panel');
+ const cs=select(el('label','Classe',f),data.classes.map(c=>[c.id,c.name]));cs.value=classFilter;cs.onchange=()=>{classFilter=cs.value;render()};
+ const ps=select(el('label','Période',f),[...periods.map(p=>[p.name,p.name+' ('+fmtDate(p.start,{day:'numeric',month:'short'})+' → '+fmtDate(p.end,{day:'numeric',month:'short'})+')']),['year','Année entière']]);ps.value=avgPeriod;ps.onchange=()=>{avgPeriod=ps.value;render()};
+ const pupils=pupilsOf(classFilter),ids=new Set(pupils.map(p=>p.id));
+ const grades=data.grades.filter(g=>ids.has(g.student)&&inPeriod(g,period)&&isFinite(Number(g.grade)));
+ const names=[...new Set(grades.slice().sort(byDate).map(g=>g.name))];
+ if(!names.length){el('p','Aucune note pour cette classe sur cette période.',view,'empty');return}
+ const cell=(sid,n)=>{const l=grades.filter(g=>g.student===sid&&g.name===n).map(g=>Number(g.grade));return l.length?l.reduce((a,b)=>a+b,0)/l.length:null};
+ const rows=pupils.map(p=>({p,avg:studentAverage(p.id,period)}));
+ const avgs=rows.map(r=>r.avg).filter(v=>v!=null),classAvg=avgs.length?avgs.reduce((a,b)=>a+b,0)/avgs.length:null;
+ const kp=el('div','',view,'kpis');
+ const kpi=(ti,v,sub)=>{const a=el('div','',kp,'kpi');el('span',ti,a);el('b',v,a);el('small',sub,a)};
+ kpi('Moyenne de la classe',avgFmt(classAvg),avgPeriod==='year'?'Année entière':avgPeriod);
+ kpi('Évaluations',names.length,names.filter(n=>coefOf(n)>0).length+' comptées');
+ kpi('Moyenne la plus basse',avgs.length?avgFmt(Math.min(...avgs)):'—','');
+ kpi('Moyenne la plus haute',avgs.length?avgFmt(Math.max(...avgs)):'—','');
+ el('p','Coefficients : modifiez-les dans l’en-tête (0 = évaluation non comptée). Ils s’appliquent à l’évaluation dans toutes les classes.',view,'muted');
+ const box=el('div','',view,'table-box');const tb=el('table','',box,'stats averages');
+ const hr=el('tr','',el('thead','',tb));el('th','Élève',hr,'sticky');
+ for(const n of names){
+  const th=el('th','',hr,'num');el('span',n,th,'ev-name');
+  const d=grades.find(g=>g.name===n)?.date;if(d)el('small',fmtDate(d,{day:'numeric',month:'short'}),th);
+  const ci=el('input','',el('label','coef.',th,'coef'));ci.type='number';ci.min=0;ci.step=0.5;ci.inputMode='decimal';ci.value=coefOf(n);ci.setAttribute('aria-label','Coefficient de '+n);
+  ci.onchange=async()=>{const all=parseSetting('coefs',{});all[n]=Math.max(0,Number(ci.value)||0);await transaction('settings',tx=>tx.objectStore('settings').put({...settings(),coefs:JSON.stringify(all)}));await load();render()};
+ }
+ el('th','Moyenne',hr,'num');
+ const body=el('tbody','',tb);
+ for(const {p,avg} of rows){
+  const tr=el('tr','',body);const th=el('th','',tr,'sticky');link(th,'student='+p.id,label(p));
+  for(const n of names){const v=cell(p.id,n);el('td',v==null?'':avgFmt(v),tr,'num'+(coefOf(n)>0?'':' off'))}
+  el('td',avgFmt(avg),tr,'num strong'+(avg!=null&&avg<10?' low':''));
+ }
+ const ft=el('tr','',body,'total');el('th','Moyenne de la classe',ft,'sticky');
+ for(const n of names){const v=pupils.map(p=>cell(p.id,n)).filter(x=>x!=null);el('td',v.length?avgFmt(v.reduce((a,b)=>a+b,0)/v.length):'',ft,'num')}
+ el('td',avgFmt(classAvg),ft,'num strong');
+ const tools=el('div','',view,'actions');
+ button('Exporter en CSV',tools,'small').onclick=()=>{
+  const head=['Nom','Prénom',...names.map(n=>n+' (coef. '+coefOf(n)+')'),'Moyenne'];
+  const lines=rows.map(({p,avg})=>[p.last,p.first,...names.map(n=>{const v=cell(p.id,n);return v==null?'':avgFmt(v)}),avgFmt(avg)]);
+  const csv=[head,...lines].map(r=>r.map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(';')).join('\n');
+  const a=document.createElement('a');a.href=URL.createObjectURL(new Blob(['﻿'+csv],{type:'text/csv'}));a.download='moyennes-'+(find('classes',classFilter)?.name||'')+'-'+(avgPeriod==='year'?'annee':avgPeriod)+'.csv';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+ };
+}
+
 // ---------- Recherche ----------
 function renderSearch(q){
  const norm=s=>(s||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase();
@@ -1553,6 +1821,7 @@ window.onunhandledrejection=()=>notify('Opération interrompue. Vérifiez le sto
 search.oninput=()=>render();
 window.onhashchange=()=>{search.value='';render();window.scrollTo(0,0)};
 await load();await migrateAttendance();
+if(lockOn())lockNow();
 modulesReady=discoverModules();
 render();
 // Au démarrage : modules dans le menu, puis reprise de leurs notes et résultats.

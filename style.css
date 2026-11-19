@@ -340,6 +340,38 @@ body.module-mode #view{gap:10px}
 .stepper li.done{background:#d8edb0;color:var(--ink)}
 .stats td select{min-height:40px;min-width:180px}
 
+/* ---------- Verrouillage ---------- */
+body.locked .sidebar,body.locked main{visibility:hidden}
+.lock-screen{position:fixed;inset:0;z-index:1000;background:var(--side);display:grid;place-items:center;padding:20px;outline:0}
+.lock-box{background:var(--surface);border-radius:28px;padding:28px 24px;width:min(360px,100%);display:flex;flex-direction:column;align-items:center;gap:14px;text-align:center}
+.lock-box .logo{width:52px;height:52px;border-radius:15px;font-size:24px}
+.lock-dots{display:flex;gap:16px;margin:4px 0 6px}
+.lock-dots i{width:16px;height:16px;border-radius:8px;border:2px solid var(--primary)}
+.lock-dots i.on{background:var(--primary)}
+.lock-dots.shake{animation:shake .35s}
+@keyframes shake{25%{transform:translateX(-8px)}50%{transform:translateX(8px)}75%{transform:translateX(-4px)}}
+.lock-pad{display:grid;grid-template-columns:repeat(3,72px);gap:12px}
+.lock-pad button{height:72px;min-height:72px;border-radius:36px;font-size:26px;font-weight:600;border-color:var(--line);color:var(--ink);padding:0}
+.lock-pad .lock-forgot{font-size:12px;border:0;color:var(--muted);line-height:1.1}
+.lock-recover{display:flex;flex-direction:column;gap:10px;width:100%}
+.lock-recover input{text-align:center;letter-spacing:.1em;text-transform:uppercase}
+.recovery-key{font-family:ui-monospace,Menlo,monospace;font-size:26px;font-weight:800;letter-spacing:.08em;text-align:center;background:#f1f6e6;border-radius:14px;padding:14px}
+.nav-lock{display:flex;align-items:center;gap:12px;min-height:44px;padding:0 12px;border-radius:12px;border:1px solid rgba(255,255,255,.2);background:transparent;color:#e3ece6;font-size:15px;font-weight:500;justify-content:flex-start;margin-top:4px}
+dialog label.check{flex-direction:row;align-items:center;gap:10px;color:var(--ink)}
+
+/* ---------- Périodes et moyennes ---------- */
+.period-grid{display:flex;flex-direction:column;gap:10px}
+.period-row{display:grid;gap:10px;grid-template-columns:minmax(140px,1.2fr) repeat(2,minmax(140px,1fr))}
+.averages th .ev-name{display:block;white-space:normal;min-width:90px;max-width:160px;color:var(--ink)}
+.averages th small{display:block;font-weight:500}
+.averages label.coef{flex-direction:row;align-items:center;justify-content:center;gap:4px;font-size:11px;margin-top:4px}
+.averages label.coef input{width:56px;min-height:34px;padding:2px 4px;text-align:center;font-size:14px}
+.averages .sticky{position:sticky;left:0;background:var(--surface);z-index:1}
+.averages thead .sticky{z-index:3}
+.averages td.off{color:#b9c6b7;text-decoration:line-through}
+.averages td.low{color:var(--danger)}
+.averages tr.total .sticky{background:#f4f6f1}
+
 /* ---------- Tablette portrait ---------- */
 @media (max-width:1023px){
   .sidebar{width:212px;padding-inline:10px}
