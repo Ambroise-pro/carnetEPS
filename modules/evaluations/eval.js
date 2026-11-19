@@ -118,7 +118,11 @@ function sampleGrid() {
 function renderGrids() {
   const bar = h('div', {class: 'toolbar'},
     h('button', {type: 'button', class: 'primary', onclick: () => go({name: 'grid', draft: newGrid(), isNew: true})}, '+ Nouvelle grille'),
-    h('button', {type: 'button', onclick: () => go({name: 'grid', draft: sampleGrid(), isNew: true})}, 'Partir d’un exemple'));
+    h('button', {type: 'button', onclick: () => go({name: 'grid', draft: sampleGrid(), isNew: true})}, 'Partir d’un exemple'),
+    h('button', {type: 'button', onclick: () => picker.click()}, 'Importer une grille Excel'),
+    h('button', {type: 'button', onclick: () => exportGrids([{...sampleGrid(), name: 'Nom de la grille (à remplacer)'}], 'Modele_grille_evaluation.xlsx')}, 'Télécharger le modèle Excel'));
+  const picker = h('input', {type: 'file', accept: '.xlsx,.xls,.ods,.csv', hidden: true, onchange: e => { importGrids(e.target.files[0]); e.target.value = ''; }});
+  bar.append(picker);
   app.append(bar);
   if (!db.grids.length) { app.append(h('p', {class: 'empty'}, 'Aucune grille. Créez votre première grille : des lignes, quatre degrés, des critères et des points dans chaque case.')); return; }
   const list = h('div', {class: 'cards'});
@@ -130,6 +134,7 @@ function renderGrids() {
       h('div', {class: 'actions'},
         h('button', {type: 'button', class: 'primary', onclick: () => assignDialog(g)}, 'Évaluer une classe'),
         h('button', {type: 'button', onclick: () => go({name: 'grid', draft: clone(g)})}, 'Modifier'),
+        h('button', {type: 'button', onclick: () => exportGrids([g], fileName(g.name) + '.xlsx')}, 'Exporter en Excel'),
         h('button', {type: 'button', onclick: () => { const c = {...clone(g), id: uid(), name: (g.name || 'Grille') + ' (copie)', createdAt: Date.now(), updatedAt: Date.now()}; db.grids.push(c); save(); render(); toast('Grille dupliquée.'); }}, 'Dupliquer'),
         h('button', {type: 'button', class: 'danger', onclick: () => { if (!confirm(`Supprimer la grille « ${g.name || 'sans nom'} » ? Les évaluations déjà faites restent disponibles.`)) return; db.grids = db.grids.filter(x => x !== g); save(); render(); }}, 'Supprimer'))));
   }
@@ -170,6 +175,84 @@ function renderEvals() {
   }
   app.append(list);
 }
+
+/* ---------- Excel : modèle, export et import de grilles ----------
+   Une feuille par grille : en haut le nom, l'activité et la modulation ; puis une ligne d'en-tête
+   « Ligne | Degré 1 · critères | Degré 1 · points min | Degré 1 · points max | … » et une ligne par ligne de la grille.
+   Bibliothèque : SheetJS (vendor/xlsx.mini.min.js, Apache-2.0), chargée à la demande. */
+let xlsxReady = null;
+function loadXLSX() {
+  if (window.XLSX) return Promise.resolve(window.XLSX);
+  return xlsxReady ??= new Promise((ok, no) => { const s = document.createElement('script'); s.src = 'vendor/xlsx.mini.min.js'; s.onload = () => ok(window.XLSX); s.onerror = () => { xlsxReady = null; no(Error('xlsx')); }; document.head.append(s); });
+}
+const HEAD = ['Ligne', ...DEGREES.flatMap(d => [`Degré ${d} · critères`, `Degré ${d} · points min`, `Degré ${d} · points max`])];
+const HELP = [
+  ['Mode d’emploi de la grille d’évaluation (module Évaluations d’EPS Manager)'], [],
+  ['1. Feuille « Grille » : indiquez le nom de la grille, l’activité et la modulation des points (0,25 · 0,5 · 1).'],
+  ['2. Une ligne du tableau = une ligne de la grille (ex. « Déplacements »). Ajoutez autant de lignes que nécessaire.'],
+  ['3. Pour chaque degré (1 = le plus faible, 4 = le meilleur) : les critères, puis les points minimum et maximum de la case.'],
+  ['   En évaluant, la case donne le maximum et peut descendre jusqu’au minimum par pas de la modulation.'],
+  ['   Même valeur en minimum et maximum = case à valeur fixe.'],
+  ['4. Le barème est la somme des maxima de chaque ligne ; la note est ramenée sur 20.'],
+  ['5. Plusieurs grilles dans un même fichier : dupliquez la feuille « Grille » (une feuille par grille).'],
+  ['6. Dans EPS Manager : Évaluations › Mes grilles › Importer une grille Excel.'],
+];
+function gridSheet(XLSX, g) {
+  const rows = [['Nom de la grille', g.name || ''], ['Activité', g.activity || ''], ['Modulation des points', num(g.step) || 0.5], [], HEAD,
+    ...g.rows.map(r => [r.label || '', ...r.cells.flatMap(c => [c.text || '', num(c.min), num(c.max)])])];
+  const ws = XLSX.utils.aoa_to_sheet(rows);
+  ws['!cols'] = [{wch: 26}, ...DEGREES.flatMap(() => [{wch: 34}, {wch: 9}, {wch: 9}])];
+  return ws;
+}
+async function exportGrids(grids, file) {
+  try {
+    const XLSX = await loadXLSX(), wb = XLSX.utils.book_new();
+    grids.forEach((g, i) => XLSX.utils.book_append_sheet(wb, gridSheet(XLSX, g), grids.length > 1 ? ('Grille ' + (i + 1) + ' ' + (g.name || '')).replace(/[\\/?*[\]:]/g, ' ').slice(0, 31).trim() : 'Grille'));
+    const help = XLSX.utils.aoa_to_sheet(HELP); help['!cols'] = [{wch: 110}];
+    XLSX.utils.book_append_sheet(wb, help, 'Mode d’emploi');
+    XLSX.writeFile(wb, file);
+  } catch { toast('Export Excel impossible.'); }
+}
+const fold = v => String(v ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
+// Lit une feuille ; renvoie une grille ou null si la feuille n'en contient pas.
+function sheetToGrid(XLSX, ws) {
+  const rows = XLSX.utils.sheet_to_json(ws, {header: 1, defval: '', raw: true});
+  const hi = rows.findIndex(r => fold(r[0]).startsWith('ligne'));
+  if (hi < 0) return null;
+  const g = {id: uid(), name: '', activity: '', step: '0.5', rows: [], createdAt: Date.now()};
+  for (const r of rows.slice(0, hi)) {
+    const k = fold(r[0]), v = r[1];
+    if (k.startsWith('nom')) g.name = String(v).trim();
+    else if (k.startsWith('activit')) g.activity = String(v).trim();
+    else if (k.includes('modulation') || k === 'pas') { const s = num(v); g.step = s >= 0.75 ? '1' : s > 0 && s <= 0.3 ? '0.25' : '0.5'; }
+  }
+  // Colonnes repérées par leur en-tête (« degré 2 · points max »…), sinon par leur position.
+  const head = rows[hi].map(fold);
+  const col = (d, kind, fallback) => { const i = head.findIndex(t => (t.includes('degre ' + d) || t.includes('d' + d)) && (kind === 'crit' ? t.includes('crit') : t.includes(kind))); return i >= 0 ? i : fallback; };
+  const cols = DEGREES.map(d => ({text: col(d, 'crit', 1 + (d - 1) * 3), min: col(d, 'min', 2 + (d - 1) * 3), max: col(d, 'max', 3 + (d - 1) * 3)}));
+  for (const r of rows.slice(hi + 1)) {
+    const label = String(r[0] ?? '').trim();
+    const cells = cols.map(c => ({text: String(r[c.text] ?? '').trim(), min: num(r[c.min]), max: num(r[c.max])}));
+    if (!label && cells.every(c => !c.text && !c.max)) continue;
+    cells.forEach(c => { if (c.min > c.max) c.max = c.min; });
+    g.rows.push({id: uid(), label, cells});
+  }
+  return g.rows.length ? g : null;
+}
+async function importGrids(file) {
+  if (!file) return;
+  try {
+    const XLSX = await loadXLSX();
+    const wb = XLSX.read(await file.arrayBuffer(), {type: 'array'});
+    const grids = wb.SheetNames.filter(n => !fold(n).startsWith('mode')).map(n => sheetToGrid(XLSX, wb.Sheets[n])).filter(Boolean);
+    if (!grids.length) return toast('Aucune grille trouvée : utilisez le modèle Excel (ligne d’en-tête « Ligne | Degré 1 · critères | … »).');
+    grids.forEach(g => { if (!g.name) g.name = file.name.replace(/\.\w+$/, ''); });
+    if (grids.length === 1) { go({name: 'grid', draft: grids[0], isNew: true}); toast('Grille importée : vérifiez-la puis enregistrez-la.'); return; }
+    grids.forEach(g => { g.updatedAt = Date.now(); db.grids.push(g); });
+    save(); render(); toast(grids.length + ' grilles importées.');
+  } catch { toast('Fichier illisible : choisissez un fichier Excel (.xlsx) ou le modèle fourni.'); }
+}
+const fileName = s => (s || 'grille').normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^\w-]+/g, '_').replace(/^_+|_+$/g, '');
 
 /* ---------- Éditeur de grille ---------- */
 function renderGridEditor() {
@@ -271,6 +354,7 @@ function studentPanel(ev, students) {
       }
       row.append(cell);
     });
+    row.append(rowSlider(ev, s, r, m, !!mark.status));
     grid.append(row);
   }
   panel.append(grid);
@@ -278,9 +362,39 @@ function studentPanel(ev, students) {
   const sc = scoreOf(ev, mark);
   panel.append(h('footer', {class: 'total-bar'},
     h('button', {type: 'button', disabled: i <= 0, onclick: () => { screen.student = students[i - 1].id; render(); }}, '← Précédent'),
-    h('div', {class: 'total'}, sc.status ? h('strong', {}, STATUS[sc.status]) : [h('strong', {class: 'note'}, fmt(sc.max ? sc.sum / sc.max * 20 : null) + ' / 20'), h('span', {class: 'muted'}, fmt(sc.sum) + ' / ' + fmt(sc.max) + ' pts' + (sc.complete ? '' : ' · ' + sc.done + ' ligne' + (sc.done > 1 ? 's' : '') + ' sur ' + sc.rows))]),
+    h('div', {class: 'total', id: 'liveTotal'}, sc.status ? h('strong', {}, STATUS[sc.status]) : [h('strong', {class: 'note'}, fmt(sc.max ? sc.sum / sc.max * 20 : null) + ' / 20'), h('span', {class: 'muted'}, fmt(sc.sum) + ' / ' + fmt(sc.max) + ' pts' + (sc.complete ? '' : ' · ' + sc.done + ' ligne' + (sc.done > 1 ? 's' : '') + ' sur ' + sc.rows))]),
     h('button', {type: 'button', class: 'primary', disabled: i >= students.length - 1, onclick: () => { screen.student = students[i + 1].id; render(); }}, 'Suivant →')));
   return panel;
+}
+// Curseur d'une ligne : parcourt toutes les valeurs possibles du degré 1 au degré 4 (pas de la grille).
+// Glisser choisit le degré et les points ; la note se met à jour en direct, la grille au relâchement.
+function rowSlider(ev, s, r, m, disabled) {
+  const g = ev.grid, opts = r.cells.flatMap((c, d) => cellSteps(c, g.step).map(pts => ({deg: d + 1, pts})));
+  const idx = m ? Math.max(0, opts.findIndex(o => o.deg === m.deg && o.pts === m.pts)) : -1;
+  const pos = i => opts.length > 1 ? i / (opts.length - 1) * 100 : 0;
+  // Fond du curseur coloré par degré
+  const stops = [];
+  DEGREES.forEach(d => { const i = opts.map((o, k) => o.deg === d ? k : -1).filter(k => k >= 0); if (!i.length) return;
+    const a = i[0] ? (pos(i[0] - 1) + pos(i[0])) / 2 : 0, b = i.at(-1) < opts.length - 1 ? (pos(i.at(-1)) + pos(i.at(-1) + 1)) / 2 : 100;
+    stops.push(`var(--d${d}) ${a}%`, `var(--d${d}) ${b}%`); });
+  const text = o => o ? 'Degré ' + o.deg + ' · ' + fmt(o.pts) + ' pt' + (o.pts > 1 ? 's' : '') : 'Glisser pour évaluer';
+  const label = h('output', {class: 'sl-value' + (idx < 0 ? ' unset' : '')}, text(opts[idx]));
+  const input = h('input', {type: 'range', min: 0, max: Math.max(0, opts.length - 1), step: 1, value: Math.max(0, idx), disabled,
+    class: idx < 0 ? 'unset' : '', style: `--track:linear-gradient(90deg,${stops.join(',')})`,
+    'aria-label': (r.label || 'Ligne') + ' : degré et points', 'aria-valuetext': text(opts[idx])});
+  const apply = () => {
+    const o = opts[Number(input.value)]; if (!o) return;
+    markOf(ev, s.id).rows[r.id] = {deg: o.deg, pts: o.pts}; ev.marks[s.id].updatedAt = Date.now(); save();
+    input.classList.remove('unset'); label.classList.remove('unset'); label.textContent = text(o); input.setAttribute('aria-valuetext', text(o));
+    const sc = scoreOf(ev, ev.marks[s.id]), t = document.getElementById('liveTotal');
+    if (t && !sc.status) { t.querySelector('.note').textContent = fmt(sc.max ? sc.sum / sc.max * 20 : null) + ' / 20'; t.querySelector('.muted').textContent = fmt(sc.sum) + ' / ' + fmt(sc.max) + ' pts' + (sc.complete ? '' : ' · ' + sc.done + ' ligne' + (sc.done > 1 ? 's' : '') + ' sur ' + sc.rows); }
+  };
+  input.oninput = apply;
+  input.onchange = () => { apply(); render(); };
+  // Un simple toucher sur un curseur encore vide choisit la valeur touchée
+  input.onpointerup = () => { if (input.classList.contains('unset')) { apply(); render(); } };
+  const marks = h('div', {class: 'sl-marks', 'aria-hidden': 'true'}, ...DEGREES.map(d => { const i = opts.findIndex(o => o.deg === d); return i < 0 ? null : h('span', {style: `left:${pos(i)}%`}, 'D' + d); }));
+  return h('div', {class: 'eg-slider'}, h('div', {class: 'sl-track'}, input, marks), label);
 }
 function touch(ev, sid) { ev.marks[sid].updatedAt = Date.now(); save(); render(); }
 
