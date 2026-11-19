@@ -1,6 +1,6 @@
 // Numéro de version affiché dans l'application : l'incrémenter à chaque nouvelle livraison
 // (et le reporter dans sw.js pour renouveler le cache hors ligne).
-const APP_VERSION=11;
+const APP_VERSION=12;
 
 // ---------- Structure de l'application ----------
 const pages={home:'Tableau de bord',calendar:'Calendrier',sessions:'Séances',attendance:'Appel',classes:'Classes',students:'Élèves',groups:'Groupes',cycles:'Cycles',restrictions:'Inaptitudes',grades:'Évaluations',comments:'Appréciations',observations:'Observations',planning:'Paramètres du calendrier',absences:'Absences',settings:'Paramètres',student:'Fiche élève',session:'Séance',boards:'Tableaux',board:'Tableau',module:'Module',years:'Années scolaires',backup:'Sauvegardes'};
@@ -985,10 +985,9 @@ function renderSession(id){
  const acts=el('div','',head,'actions');
  if(!s.cancelled)link(acts,'attendance',isCalled(s)?'Voir l’appel':'Faire l’appel','btn primary').onclick=()=>{sessionId=s.id};
  link(acts,'boards','Tableaux de la classe','btn').onclick=()=>{classFilter=s.classId};
+ moduleIcon(acts,s);
  button('Date, heure, classe…',acts).onclick=()=>{editing={k:'sessions',id:s.id};location.hash='#sessions'};
  if(s.cancelled)button('Rétablir / effacer…',acts,'danger').onclick=()=>openSession(s);else button('Supprimer…',acts,'danger').onclick=()=>cancelSession(s);
-
- sessionModulesPanel(s);
 
  // Contenu pédagogique, enregistré automatiquement
  const p=panel(view,'Contenu de la séance');
@@ -1016,7 +1015,6 @@ function resultsPanel(s){
  const all=data.results.filter(r=>r.sessionId===s.id),rows=all.filter(r=>r.student);
  const sums=all.filter(r=>!r.student);
  if(sums.length){const box=el('div','',p,'module-summary');for(const x of sums){const r=el('div','',box,'row');icon('modules',el('span','',r,'avatar'));const b=el('div','',r,'body');el('span',x.module,b,'title');el('span',x.value,b,'meta')}}
- const mb=el('div','',p,'actions');moduleButtons(mb,s);if(!mb.children.length)mb.remove();
  if(!rows.length&&!sums.length)el('p','Les résultats des modules connectés à l’application (chronomètre, tests physiques, évaluations…) apparaîtront ici, séance par séance et élève par élève.',p,'muted');
  const mods=[...new Set(rows.map(r=>r.module))];
  for(const m of mods){
@@ -1301,25 +1299,25 @@ async function useModule(s,m){
  sessionReturn='session='+s.id;moduleFocus={classId:s.classId,sessionId:s.id};
  location.hash='#module='+m.id;
 }
-function moduleButtons(parent,s){
- const usable=modules.filter(m=>!m.missing);
- for(const m of usable){const a=link(parent,'module='+m.id,'Ouvrir '+m.name,'btn');a.onclick=e=>{e.preventDefault();useModule(s,m)}}
-}
-// Bloc « Modules de la séance » de la fiche séance
-function sessionModulesPanel(s){
+// Icône puzzle de la fiche séance : choisir le module à utiliser dans cette séance.
+function moduleIcon(parent,s){
  const usable=modules.filter(m=>!m.missing);if(!usable.length||s.cancelled)return;
- const used=usedModules(s);
- const p=panel(view,'Modules de la séance');
- el('p',used.length?'Les résultats de ces modules sont importés dans cette séance.':'Choisissez un module à utiliser : tout ce qu’il renvoie (notes, résultats, résumé) sera importé dans cette séance.',p,'muted');
- const grid=el('div','',p,'module-choice');
- for(const m of usable){
-  const on=used.includes(m.id),n=data.results.filter(r=>r.sessionId===s.id&&r.module===m.name&&r.student).length;
-  const b=el('button','',grid,'module-card'+(on?' on':''));b.type='button';
-  icon('modules',el('span','',b,'avatar'));
-  const t=el('span','',b,'body');el('span',m.name,t,'title');el('span',on?(n?plural(n,'résultat')+' importé'+(n>1?'s':''):'Utilisé dans cette séance'):(m.description||'Ouvrir le module'),t,'meta');
-  el('span',on?'Ouvrir':'Utiliser',b,'tag'+(on?' now':''));
-  b.onclick=()=>useModule(s,m);
- }
+ const used=usedModules(s).filter(id=>usable.some(m=>m.id===id));
+ const b=iconButton('modules',used.length?'Modules utilisés : '+usable.filter(m=>used.includes(m.id)).map(m=>m.name).join(', '):'Utiliser un module',parent,'module-icon'+(used.length?' on':''));
+ if(used.length)el('span',used.length,b,'badge');
+ b.onclick=()=>{
+  const d=sheet('Modules');
+  el('p','Tout ce que renvoie le module est importé dans cette séance.',d,'muted');
+  const list=el('div','',d,'module-list');
+  for(const m of usable){
+   const on=used.includes(m.id),n=data.results.filter(r=>r.sessionId===s.id&&r.module===m.name&&r.student).length;
+   const it=button('',list,'module-item'+(on?' on':''));
+   icon('modules',el('span','',it,'avatar'));
+   const t=el('span','',it,'body');el('span',m.name,t,'title');el('span',on?(n?plural(n,'résultat')+' dans cette séance':'Utilisé dans cette séance'):(m.description||''),t,'meta');
+   it.onclick=()=>{d.close();useModule(s,m)};
+  }
+  d.showModal();
+ };
 }
 function renderModulesSettings(){
  const p=panel(view,'Modules');

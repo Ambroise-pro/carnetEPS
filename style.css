@@ -311,14 +311,18 @@ body.module-mode #view{gap:10px}
 .module-summary{display:flex;flex-direction:column;gap:6px}
 .module-summary .row{background:#f1f6e6}
 
-/* ---------- Appel rapide et modules de la séance ---------- */
+/* ---------- Appel rapide et icône des modules ---------- */
 .quick-call .actions button{min-width:110px}
-.module-choice{display:grid;gap:10px;grid-template-columns:repeat(auto-fill,minmax(min(280px,100%),1fr))}
-.module-card{justify-content:flex-start;gap:12px;min-height:72px;padding:10px 14px;border-color:var(--line);color:var(--ink);text-align:left;font-weight:500}
-.module-card .body{display:flex;flex-direction:column;gap:2px;flex:1;min-width:0}
-.module-card .title{font-weight:700}
-.module-card .meta{font-size:13px;color:var(--muted);white-space:normal}
-.module-card.on{border:2px solid var(--primary);background:#f1f6e6}
+.module-icon{position:relative;width:48px;min-width:48px;height:48px;min-height:48px;border-color:var(--primary)}
+.module-icon svg{width:22px;height:22px}
+.module-icon.on{background:#f1f6e6}
+.module-icon .badge{position:absolute;top:-6px;right:-6px;background:var(--primary)}
+.module-list{display:flex;flex-direction:column;gap:8px}
+.module-item{justify-content:flex-start;gap:12px;min-height:60px;padding:8px 12px;border-color:var(--line);color:var(--ink);text-align:left;font-weight:500}
+.module-item .body{display:flex;flex-direction:column;gap:2px;flex:1;min-width:0}
+.module-item .title{font-weight:700}
+.module-item .meta{font-size:13px;color:var(--muted);white-space:normal}
+.module-item.on{border:2px solid var(--primary);background:#f1f6e6}
 
 /* ---------- Tablette portrait ---------- */
 @media (max-width:1023px){
