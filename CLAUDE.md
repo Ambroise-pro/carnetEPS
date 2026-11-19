@@ -99,6 +99,7 @@ Cette arborescence est **une cible**, pas une instruction de déplacer tous les 
 - Toutes les nouvelles interactions fonctionnent au clavier et au tactile ; cibles tactiles confortables, contraste suffisant, focus visible, dialogues accessibles.
 - Les actions de modification doivent afficher une confirmation ou un retour clair, avec prévention des doubles soumissions.
 - Chaque évolution du shell nécessite la mise à jour cohérente de `APP_VERSION`, `sw.js`, des ressources précachées et de la stratégie d'activation ; ne pas supprimer les caches nécessaires à une version encore active sans stratégie de mise à jour.
+- Après toute modification de `modules/` ou `vendor/` (ajout ou mise à jour d'une application associée), relancer `node tools/offline-list.mjs` pour mettre à jour `offline.json` (cache hors ligne durable `eps-files`). Lancer les tests : `node --test --test-concurrency=1 tests/e2e/*.test.mjs`.
 
 ## 5. Phases de livraison et dépendances
 

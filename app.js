@@ -1,6 +1,6 @@
 // Numéro de version affiché dans l'application : l'incrémenter à chaque nouvelle livraison
 // (et le reporter dans sw.js pour renouveler le cache hors ligne).
-const APP_VERSION=28;
+const APP_VERSION=29;
 
 // ---------- Structure de l'application ----------
 const pages={home:'Tableau de bord',calendar:'Calendrier',sessions:'Séances',attendance:'Appel',classes:'Classes',students:'Élèves',groups:'Groupes',cycles:'Cycles',restrictions:'Inaptitudes',grades:'Évaluations',comments:'Appréciations',observations:'Observations',planning:'Paramètres du calendrier',absences:'Absences',settings:'Paramètres',student:'Fiche élève',session:'Séance',boards:'Tableaux',board:'Tableau',module:'Application',apps:'Applications',averages:'Moyennes',years:'Années scolaires',backup:'Sauvegardes'};
@@ -1359,10 +1359,24 @@ function moduleIcon(parent,s){
  };
 }
 // Page « Applications » : toutes les applications associées (dossier modules/), à ouvrir, synchroniser, ajouter ou retirer.
+// État du cache hors ligne des applications (liste offline.json, état tenu par le service worker dans « eps-files »).
+async function offlineStatus(p){
+ p.hidden=true;
+ try{
+  if(!('caches' in window)||!navigator.serviceWorker?.controller)return;
+  const c=await caches.open('eps-files'),base=new URL('./',location.href).href;
+  const list=await (await c.match(base+'offline.json'))?.json(),state=await (await c.match(base+'offline-state.json'))?.json()||{};
+  if(!list)return;
+  const ready=list.files.filter(([f,h])=>state[f]===h).length;
+  p.textContent=ready===list.files.length?'✓ Toutes les applications sont disponibles hors connexion sur cet appareil.':'Préparation du hors connexion : '+ready+' / '+list.files.length+' fichiers ('+mb(list.bytes)+' au total). Restez connecté quelques minutes.';
+  p.hidden=false;
+ }catch{}
+}
 async function renderApps(){
  await modulesReady;
  el('p','Les applications associées reçoivent vos classes et vos élèves, et renvoient leurs notes, leurs résultats et le résumé de chaque séance. Depuis une séance, l’icône puzzle les ouvre pour cette séance.',view,'muted');
  if(!modules.length)el('p','Aucune application associée.',view,'empty');
+ offlineStatus(el('p','',view,'small muted offline-status'));
  const grid=el('div','',view,'list');
  for(const m of modules){
   const card=el('article','',grid,'app-card'+(m.missing?' missing':''));
@@ -2253,4 +2267,4 @@ render();
 // Au démarrage : modules dans le menu, puis reprise de leurs notes et résultats.
 modulesReady.then(async()=>{buildNav();await checkModuleVersions();return syncAllModules()}).then(n=>{if(n&&!location.hash.startsWith('#module'))render()});
 setTimeout(async()=>{if(!locked&&!await interruptedRestore())weeklyBackupPrompt()},1500);
-if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js');
+if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js').then(()=>navigator.serviceWorker.ready).then(r=>r.active?.postMessage('sync-files')).catch(()=>{});

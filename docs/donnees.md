@@ -1,4 +1,4 @@
-# Données d'EPS Manager : inventaire (version 27)
+# Données d'EPS Manager : inventaire (version 29)
 
 Document de référence de la phase 0 (lot 0.1). À mettre à jour à chaque changement de format.
 Toutes les données restent **sur l'appareil** ; rien n'est envoyé à un serveur, sauf les fonctions listées en fin de document.
@@ -85,10 +85,17 @@ Fichier JSON `eps-manager-AAAA-MM-JJ.json` produit par `exportBackup()` :
 
 ## 5. Cache hors ligne (`sw.js`)
 
-- `VERSION` = `APP_VERSION`, cache `eps-v<VERSION>` ; à l'activation, les autres caches sont supprimés.
-- Stratégie : réseau d'abord (`no-cache`), copie en cache des réponses ; hors ligne, réponse du cache puis `index.html`.
-- Préchargés : le shell (`index.html`, `app.js`, `style.css`, manifeste, icônes, `trombi.js`, pdf.js, `board/*`).
-  Les applications (`modules/…`) et `vendor/` ne sont en cache qu'après une première ouverture en ligne.
+- `VERSION` = `APP_VERSION`, cache du socle `eps-v<VERSION>` : mis en cache à l'installation (`index.html`, `app.js`, `style.css`,
+  manifeste, icônes, `trombi.js`, pdf.js, `board/*`). À l'activation, les anciens caches `eps-v…` sont supprimés.
+- Applications associées et bibliothèques : cache durable `eps-files`, **gardé d'une version à l'autre**. La liste vient de
+  `offline.json` (chemin + empreinte SHA-256 tronquée), générée par `node tools/offline-list.mjs`. Le service worker télécharge
+  en arrière-plan (4 à la fois) les seuls fichiers nouveaux ou modifiés, retire ceux qui ne sont plus listés, et note l'état dans
+  `offline-state.json` (dans le cache). Ce téléchargement ne bloque jamais l'installation ni l'ouverture de l'application ;
+  il est relancé à chaque ouverture (message `sync-files`).
+- Stratégie : réseau d'abord (`no-cache`) avec copie en cache ; hors ligne, réponse du cache (tous caches), puis `index.html`
+  pour une page de l'application (jamais pour une page d'application associée).
+- Page Applications : état « disponibles hors connexion » ou progression du téléchargement.
+- **Après toute modification de `modules/` ou `vendor/`, relancer `node tools/offline-list.mjs`** (le test `10-hors-ligne` le vérifie).
 
 ## 6. Fonctions qui communiquent avec l'extérieur (demandées par l'utilisateur)
 
@@ -102,5 +109,5 @@ Fichier JSON `eps-manager-AAAA-MM-JJ.json` produit par `exportBackup()` :
 1. ~~Restauration non atomique sans copie préalable~~ : corrigé en v27 (copie, retour automatique, reprise au démarrage).
 2. ~~Pas d'inventaire ni de somme de contrôle~~ : corrigé en v27.
 3. ~~`KNOWN_DBS` incomplète~~ : corrigé en v27 (`chrono-eps`, `df-scan-ccf-backups`, `eps-hub-pf` ajoutées).
-4. `modules/` et `vendor/` non préchargés pour le hors ligne.
+4. ~~`modules/` et `vendor/` non préchargés~~ : corrigé en v29 (cache durable `eps-files`, liste `offline.json`).
 5. Le point de restauration double l'espace occupé pendant qu'il existe (photos comprises) ; un seul point est gardé.

@@ -16,7 +16,8 @@ const MIME = {'.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/java
   '.webmanifest': 'application/manifest+json', '.png': 'image/png', '.svg': 'image/svg+xml', '.jpg': 'image/jpeg', '.wasm': 'application/wasm'};
 
 // Sert le dépôt tel quel, comme un hébergement statique (GitHub Pages, Vercel…).
-export function startServer() {
+// `overrides` : {'/chemin': contenu => nouveauContenu} pour simuler une nouvelle version d'un fichier.
+export function startServer(overrides = {}) {
   return new Promise(ok => {
     const server = createServer(async (req, res) => {
       try {
@@ -24,18 +25,20 @@ export function startServer() {
         if (p.endsWith('/')) p += 'index.html';
         const file = path.join(ROOT, p);
         if (!file.startsWith(ROOT) || !(await stat(file)).isFile()) throw 0;
-        res.writeHead(200, {'Content-Type': MIME[path.extname(file)] || 'application/octet-stream'});
-        res.end(await readFile(file));
+        res.writeHead(200, {'Content-Type': MIME[path.extname(file)] || 'application/octet-stream', 'Cache-Control': 'no-cache'});
+        let body = await readFile(file);
+        if (overrides[p]) body = overrides[p](body.toString('utf8'));
+        res.end(body);
       } catch { res.writeHead(404); res.end('404'); }
     });
-    server.listen(0, '127.0.0.1', () => ok({server, url: `http://127.0.0.1:${server.address().port}/`}));
+    server.listen(0, '127.0.0.1', () => ok({server, overrides, url: `http://127.0.0.1:${server.address().port}/`}));
   });
 }
 
 // Ouvre un navigateur, une page à la date fixe du jeu de données et collecte les erreurs JavaScript.
 // `seed: true` charge les données fictives avant de rendre la main.
 export async function open({seed = true, serviceWorkers = 'block', viewport = {width: 1180, height: 820}} = {}) {
-  const {server, url} = await startServer();
+  const {server, url, overrides} = await startServer();
   const browser = await chromium.launch();
   const context = await browser.newContext({viewport, serviceWorkers, acceptDownloads: true});
   const page = await context.newPage();
@@ -49,7 +52,7 @@ export async function open({seed = true, serviceWorkers = 'block', viewport = {w
     await page.waitForSelector('.version', {state: 'attached'});
     if (seed) await seedData(page);
   } catch (e) { await close(); throw e; } // ne jamais laisser un navigateur ouvert : la suite resterait bloquée
-  return {page, context, browser, url, errors, close};
+  return {page, context, browser, url, errors, close, overrides};
 }
 
 // Écrit les données fictives dans IndexedDB et localStorage, puis recharge l'application.

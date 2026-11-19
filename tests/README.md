@@ -26,6 +26,7 @@ Un seul fichier : `node --test tests/e2e/05-sauvegarde.test.mjs`. Durée totale 
 | `06-applications` | 6, 7 : modules déclarés, pages d'entrée, liaisons SDK v1 (`collect`), aucune liaison en erreur, tableaux |
 | `07-securite` | injection HTML dans un prénom affichée en texte, jamais exécutée |
 | `09-conquete` | 7 : application Conquête ouverte depuis EPS Manager, classes reçues, résultat repris dans la séance du jour, sans doublon (serveur de jeu non contacté) |
+| `10-hors-ligne` | 10 (lot 0.3) : `offline.json` à jour, applications associées ouvertes sans connexion après une première visite, mise à jour de version sans écran blanc, données gardées, applications non retéléchargées |
 | `08-restauration-sure` | 8 (lot 0.2) : inventaire et SHA-256 dans le fichier, fichier modifié refusé, ancien fichier accepté, échec en cours de restauration → retour automatique complet, annulation de la dernière restauration, reprise d'une restauration interrompue, copie avant les données d'exemple |
 
 ## Organisation
@@ -39,4 +40,4 @@ Un seul fichier : `node --test tests/e2e/05-sauvegarde.test.mjs`. Durée totale 
 ## Non couvert pour l'instant
 
 Import trombinoscope PDF et CSV PRONOTE, import iCal, verrouillage par code, génération Gemini (réseau simulé seulement dans les essais manuels),
-mise à jour du service worker d'une version à l'autre, fonctionnement interne de chaque application associée.
+fonctionnement interne de chaque application associée.
