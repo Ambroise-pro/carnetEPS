@@ -142,7 +142,7 @@ function renderGrids() {
 }
 
 function assignDialog(grid) {
-  if (!db.classes.length) { toast('Aucune classe : ouvrez le module depuis EPS Manager pour recevoir vos classes.'); return; }
+  if (!db.classes.length) { toast('Aucune classe : ouvrez l’application depuis EPS Manager pour recevoir vos classes.'); return; }
   const grids = h('select', {}, ...db.grids.map(g => h('option', {value: g.id, selected: g === grid}, g.name || 'Grille sans nom')));
   const cls = h('select', {}, ...db.classes.map(c => h('option', {value: c.id, selected: c.id === db.ui.focusClassId}, c.name)));
   const title = h('input', {value: grid?.name || db.grids[0]?.name || '', required: true});
@@ -187,7 +187,7 @@ function loadXLSX() {
 }
 const HEAD = ['Ligne', ...DEGREES.flatMap(d => [`Degré ${d} · critères`, `Degré ${d} · points min`, `Degré ${d} · points max`])];
 const HELP = [
-  ['Mode d’emploi de la grille d’évaluation (module Évaluations d’EPS Manager)'], [],
+  ['Mode d’emploi de la grille d’évaluation (application Évaluations d’EPS Manager)'], [],
   ['1. Feuille « Grille » : indiquez le nom de la grille, l’activité et la modulation des points (0,25 · 0,5 · 1).'],
   ['2. Une ligne du tableau = une ligne de la grille (ex. « Déplacements »). Ajoutez autant de lignes que nécessaire.'],
   ['3. Pour chaque degré (1 = le plus faible, 4 = le meilleur) : les critères, puis les points minimum et maximum de la case.'],
@@ -312,7 +312,7 @@ function renderEval() {
     h('div', {class: 'actions'},
       h('button', {type: 'button', 'aria-pressed': String(!!screen.summary), onclick: () => { screen.summary = !screen.summary; render(); }}, screen.summary ? 'Retour à la saisie' : 'Bilan de la classe'),
       h('button', {type: 'button', class: 'danger', onclick: () => { if (!confirm('Supprimer cette évaluation et toutes ses notes ?')) return; db.evals = db.evals.filter(e => e !== ev); save(); go({name: 'home'}); }}, 'Supprimer'))));
-  if (!students.length) { app.append(h('p', {class: 'empty'}, 'Cette classe n’a pas d’élèves. Ouvrez le module depuis EPS Manager pour mettre à jour la liste.')); return; }
+  if (!students.length) { app.append(h('p', {class: 'empty'}, 'Cette classe n’a pas d’élèves. Ouvrez l’application depuis EPS Manager pour mettre à jour la liste.')); return; }
   if (screen.summary) return renderSummary(ev, students);
 
   const layout = h('div', {class: 'eval-layout'});

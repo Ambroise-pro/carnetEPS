@@ -1,6 +1,6 @@
-# Modules d'EPS Manager
+# Applications associées à EPS Manager (dossier modules/)
 
-Un module est une application web ajoutée telle quelle dans un dossier de `modules/`.
+Une application associée (appelée « module » dans le code) est une application web ajoutée telle quelle dans un dossier de `modules/`.
 EPS Manager l'ouvre en plein écran, lui transmet les classes et récupère ses résultats.
 **L'application principale n'a pas à être modifiée pour ajouter un module.**
 
@@ -18,9 +18,9 @@ EPS Manager l'ouvre en plein écran, lui transmet les classes et récupère ses 
 
 3. Déclarer le dossier, au choix :
    - en ajoutant son nom dans `modules/modules.json` (ex. `["demi-fond", "mon-module"]`) ;
-   - ou dans l'application : Réglages › Paramètres › Modules › « Ajouter un module ».
+   - ou dans EPS Manager : page « Applications » › « Associer une application ».
 
-Le module apparaît alors dans le menu (groupe « Modules ») et dans chaque fiche séance.
+L'application apparaît alors dans la page « Applications » et dans l'icône puzzle de chaque fiche séance.
 
 ## La liaison (`adapter`, facultative)
 

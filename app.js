@@ -1,12 +1,12 @@
 // Numéro de version affiché dans l'application : l'incrémenter à chaque nouvelle livraison
 // (et le reporter dans sw.js pour renouveler le cache hors ligne).
-const APP_VERSION=12;
+const APP_VERSION=13;
 
 // ---------- Structure de l'application ----------
-const pages={home:'Tableau de bord',calendar:'Calendrier',sessions:'Séances',attendance:'Appel',classes:'Classes',students:'Élèves',groups:'Groupes',cycles:'Cycles',restrictions:'Inaptitudes',grades:'Évaluations',comments:'Appréciations',observations:'Observations',planning:'Paramètres du calendrier',absences:'Absences',settings:'Paramètres',student:'Fiche élève',session:'Séance',boards:'Tableaux',board:'Tableau',module:'Module',years:'Années scolaires',backup:'Sauvegardes'};
+const pages={home:'Tableau de bord',calendar:'Calendrier',sessions:'Séances',attendance:'Appel',classes:'Classes',students:'Élèves',groups:'Groupes',cycles:'Cycles',restrictions:'Inaptitudes',grades:'Évaluations',comments:'Appréciations',observations:'Observations',planning:'Paramètres du calendrier',absences:'Absences',settings:'Paramètres',student:'Fiche élève',session:'Séance',boards:'Tableaux',board:'Tableau',module:'Application',apps:'Applications',years:'Années scolaires',backup:'Sauvegardes'};
 const navLabels={planning:'Emploi du temps'};
 const navGroups=[
- ['Quotidien',['home','calendar','sessions','attendance','boards']],
+ ['Quotidien',['home','calendar','sessions','attendance','boards','apps']],
  ['Mes élèves',['classes','students','groups','cycles','restrictions']],
  ['Suivi',['absences','grades','comments','observations']],
  ['Réglages',['settings','planning','years','backup']]
@@ -28,6 +28,7 @@ const icons={
  observations:'M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12zM12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z',
  backup:'M12 4v11M7 10l5 5 5-5M5 20h14',
  modules:'M9 3h6v4a2 2 0 1 0 4 0h2v6h-2a2 2 0 1 0 0 4h2v4H3V3h2a2 2 0 1 0 4 0z',
+ apps:'M9 3h6v4a2 2 0 1 0 4 0h2v6h-2a2 2 0 1 0 0 4h2v4H3V3h2a2 2 0 1 0 4 0z',
  boards:'M3 4h18v12H3zM8 20h8M12 16v4M7 9h.01M12 11h.01M16 8h.01',
  absences:'M4 5h16v16H4zM4 10h16M8 3v4M16 3v4M9.5 13.5l5 5M14.5 13.5l-5 5',
  settings:'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1',
@@ -64,7 +65,7 @@ const fields={
 };
 const addTitles={timetable:'Ajouter un cours',holidays:'Ajouter une période de vacances',sessions:'Ajouter une séance ponctuelle',cycles:'Créer un cycle'};
 const listTitles={timetable:'Cours',holidays:'Périodes'};
-const nouns={boards:['tableau','tableaux'],results:['résultat de module','résultats de module'],years:['année','années'],classes:['classe','classes'],students:['élève','élèves'],groups:['groupe','groupes'],cycles:['cycle','cycles'],sessions:['séance','séances'],restrictions:['inaptitude','inaptitudes'],grades:['note','notes'],comments:['appréciation','appréciations'],observations:['observation','observations'],timetable:['cours de l’emploi du temps','cours de l’emploi du temps'],holidays:['période de vacances','périodes de vacances'],attendance:['mention d’appel','mentions d’appel']};
+const nouns={boards:['tableau','tableaux'],results:['résultat d’application','résultats d’application'],years:['année','années'],classes:['classe','classes'],students:['élève','élèves'],groups:['groupe','groupes'],cycles:['cycle','cycles'],sessions:['séance','séances'],restrictions:['inaptitude','inaptitudes'],grades:['note','notes'],comments:['appréciation','appréciations'],observations:['observation','observations'],timetable:['cours de l’emploi du temps','cours de l’emploi du temps'],holidays:['période de vacances','périodes de vacances'],attendance:['mention d’appel','mentions d’appel']};
 const deps={years:[['classes','year'],['holidays','year'],['timetable','year']],classes:[['students','classId'],['groups','classId'],['cycles','classId'],['sessions','classId'],['timetable','classId'],['boards','classId']],students:[['restrictions','student'],['grades','student'],['comments','student'],['observations','student'],['attendance','student'],['results','student']],sessions:[['attendance','sessionId'],['results','sessionId']]};
 // Appel : tout le monde est présent par défaut, seules les exceptions sont enregistrées.
 // Chaque mention a une couleur et un symbole, pour être repérée d'un coup d'œil dans les résumés.
@@ -242,8 +243,6 @@ function buildNav(){
   const g=el('div','',nav,'nav-group');el('span',title,g);
   for(const k of keys){const a=link(g,k,'');icon(k,a);el('span',navLabels[k]||pages[k],a,'label');if(badges[k])el('span',badges[k],a,'badge').setAttribute('aria-label',badges[k]+' à traiter');a.setAttribute('aria-current',k===current?'page':'false')}
  }
- const mods=modules.filter(m=>!m.missing);
- if(mods.length){const g=el('div','',nav,'nav-group');el('span','Modules',g);for(const m of mods){const a=link(g,'module='+m.id,'');icon('modules',a);el('span',m.name,a,'label');a.setAttribute('aria-current',current==='module='+m.id?'page':'false')}}
 }
 document.querySelector('time').textContent=new Intl.DateTimeFormat('fr',{dateStyle:'full'}).format(new Date());
 document.querySelector('.version').textContent='Version '+APP_VERSION;
@@ -252,7 +251,7 @@ document.querySelector('.version').textContent='Version '+APP_VERSION;
 let sessionId='',classFilter='',period='upcoming',calWeek='',editing={};
 const collectionsOf=k=>k==='planning'?['timetable','holidays']:[k];
 function render(){
- let [k,param]=location.hash.slice(1).split('=');if(!(k in pages))k='home';current=k==='student'?'students':k==='session'?'calendar':k==='board'?'boards':k==='module'?'module='+param:k;
+ let [k,param]=location.hash.slice(1).split('=');if(!(k in pages))k='home';current=k==='student'?'students':k==='session'?'calendar':k==='board'?'boards':k==='module'?'apps':k;
  if(k!=='module')leaveModule();
  if(editing.k&&!collectionsOf(k).includes(editing.k))editing={};
  buildNav();
@@ -262,7 +261,7 @@ function render(){
  if(q){document.querySelector('h1').textContent='Recherche';return renderSearch(q)}
  document.querySelector('h1').textContent=pages[k];
  document.title=pages[k]+' · EPS Manager';
- ({home:renderHome,calendar:renderCalendar,planning:renderPlanning,attendance:renderAttendance,backup:renderBackup,absences:renderAbsences,settings:renderSettings,student:()=>renderStudent(decodeURIComponent(param||'')),session:()=>renderSession(decodeURIComponent(param||'')),boards:renderBoards,board:()=>renderBoard(decodeURIComponent(param||'')),module:()=>renderModule(decodeURIComponent(param||''))}[k]||renderList)(k);
+ ({home:renderHome,calendar:renderCalendar,planning:renderPlanning,attendance:renderAttendance,backup:renderBackup,absences:renderAbsences,settings:renderSettings,student:()=>renderStudent(decodeURIComponent(param||'')),session:()=>renderSession(decodeURIComponent(param||'')),boards:renderBoards,board:()=>renderBoard(decodeURIComponent(param||'')),module:()=>renderModule(decodeURIComponent(param||'')),apps:renderApps}[k]||renderList)(k);
 }
 
 // ---------- Tableau de bord ----------
@@ -784,7 +783,6 @@ function renderSettings(){
  const n=watchList();
  el('p',n.length?'Avec ces réglages : '+plural(n.length,'alerte')+' en ce moment.':'Avec ces réglages : aucune alerte en ce moment.',p,'hint');
  const b=el('div','',p,'actions');button('Rétablir les réglages par défaut',b).onclick=()=>save(defaultSettings);
- renderModulesSettings();
 }
 
 // ---------- Suivi des absences ----------
@@ -1011,11 +1009,11 @@ function renderSession(id){
  resultsPanel(s);
 }
 function resultsPanel(s){
- const p=panel(view,'Résultats des modules');
+ const p=panel(view,'Résultats des applications');
  const all=data.results.filter(r=>r.sessionId===s.id),rows=all.filter(r=>r.student);
  const sums=all.filter(r=>!r.student);
  if(sums.length){const box=el('div','',p,'module-summary');for(const x of sums){const r=el('div','',box,'row');icon('modules',el('span','',r,'avatar'));const b=el('div','',r,'body');el('span',x.module,b,'title');el('span',x.value,b,'meta')}}
- if(!rows.length&&!sums.length)el('p','Les résultats des modules connectés à l’application (chronomètre, tests physiques, évaluations…) apparaîtront ici, séance par séance et élève par élève.',p,'muted');
+ if(!rows.length&&!sums.length)el('p','Les résultats des applications associées (chronomètre, tests physiques, évaluations…) apparaîtront ici, séance par séance et élève par élève.',p,'muted');
  const mods=[...new Set(rows.map(r=>r.module))];
  for(const m of mods){
   const list=rows.filter(r=>r.module===m).sort((a,b)=>ref('students',a.student).localeCompare(ref('students',b.student),'fr'));
@@ -1027,7 +1025,7 @@ function resultsPanel(s){
   for(const r of list){const tr=el('tr','',body);const th=el('th','',tr);const st=find('students',r.student);link(th,'student='+r.student,label(st)||'Élève supprimé');el('td',r.label,tr);el('td',[r.value,r.unit].filter(Boolean).join(' '),tr,'num strong')}
  }
  const imp=el('details','',p,'import-results');el('summary','Importer des résultats depuis un fichier (JSON)',imp);
- const f=el('input','',el('label','Fichier exporté par un module',imp));f.type='file';f.accept='.json,application/json';
+ const f=el('input','',el('label','Fichier exporté par une application',imp));f.type='file';f.accept='.json,application/json';
  f.onchange=()=>importResults(s,f.files[0]);
  el('p','Format attendu :',imp,'muted');
  el('pre','{\n  "module": "Chrono demi-fond",\n  "resultats": [\n    { "nom": "Martin", "prenom": "Léa", "epreuve": "3×500 m", "valeur": "2:05", "unite": "min" },\n    { "eleve": "<identifiant de l’élève>", "epreuve": "VMA", "valeur": "13", "unite": "km/h" }\n  ]\n}',imp,'code');
@@ -1050,16 +1048,16 @@ async function importResults(s,file){
  try{
   const j=JSON.parse(await file.text());const items=j.resultats||j.results;
   if(!Array.isArray(items))throw Error();
-  const r=await addResults(s,j.module||'Module',items);render();
+  const r=await addResults(s,j.module||'Application',items);render();
   notify(plural(r.added,'résultat importé','résultats importés')+(r.missing.length?' · non reconnus : '+r.missing.slice(0,3).join(', ')+(r.missing.length>3?'…':''):'')+'.');
  }catch{notify('Import impossible : vérifiez le format du fichier.')}
 }
 function studentResults(id){
  const rows=data.results.filter(r=>r.student===id).sort((a,b)=>byDate(b,a));
- const p=panel(view,'Résultats des modules · '+rows.length);
- if(!rows.length){el('p','Aucun résultat de module pour le moment.',p,'muted');return}
+ const p=panel(view,'Résultats des applications · '+rows.length);
+ if(!rows.length){el('p','Aucun résultat d’application pour le moment.',p,'muted');return}
  const box=el('div','',p,'table-box flat');const tb=el('table','',box,'stats');
- const hr=el('tr','',el('thead','',tb));el('th','Date',hr);el('th','Module',hr);el('th','Épreuve',hr);el('th','Résultat',hr,'num');
+ const hr=el('tr','',el('thead','',tb));el('th','Date',hr);el('th','Application',hr);el('th','Épreuve',hr);el('th','Résultat',hr,'num');
  const body=el('tbody','',tb);
  for(const r of rows){const tr=el('tr','',body);const th=el('th','',tr);link(th,'session='+r.sessionId,fmtDate(r.date));el('td',r.module,tr);el('td',r.label,tr);el('td',[r.value,r.unit].filter(Boolean).join(' '),tr,'num strong')}
 }
@@ -1165,7 +1163,7 @@ function renderBoards(){
 function renderBoard(param){
  const recs=param.split(',').map(id=>find('boards',id)).filter(Boolean).slice(0,4);
  if(!recs.length){el('p','Tableau introuvable.',view,'empty');link(view,'boards','← Tableaux','link');return}
- if(typeof renderClassBoard!=='function'){el('p','Le module tableau n’a pas pu se charger. Rechargez la page.',view,'notice');return}
+ if(typeof renderClassBoard!=='function'){el('p','Le tableau n’a pas pu se charger. Rechargez la page.',view,'notice');return}
  const classId=recs[0].classId,c=find('classes',classId);classFilter=classId;
  document.querySelector('h1').textContent=recs.length===1?recs[0].name:'Tableaux · '+(c?.name||'');document.title=document.querySelector('h1').textContent+' · EPS Manager';
  const bar=el('div','',view,'cal-bar');link(bar,'boards','← Tableaux de la '+(c?.name||'classe'),'btn small');
@@ -1267,12 +1265,12 @@ function leaveModule(){
 async function renderModule(id){
  await modulesReady;
  const m=modules.find(x=>x.id===id);
- if(!m){el('p','Module introuvable. Vérifiez le dossier modules/'+id+'/ et sa déclaration dans Réglages › Paramètres.',view,'empty');return}
+ if(!m){el('p','Application introuvable. Vérifiez le dossier modules/'+id+'/ et sa déclaration dans la page Applications.',view,'empty');return}
  document.querySelector('h1').textContent=m.name;document.title=m.name+' · EPS Manager';
  if(m.missing){el('p','Le dossier modules/'+m.id+'/ ou son fichier eps-module.json est introuvable.',view,'notice');return}
  document.body.classList.add('module-mode');
  const bar=el('div','',view,'module-bar');
- link(bar,sessionReturn||'home','← EPS Manager','btn small');
+ link(bar,sessionReturn||'apps','← EPS Manager','btn small');
  el('strong',m.name,bar);
  // Module qui travaille classe par classe : choix de la classe (celle de la séance si on vient d'une fiche séance).
  let pick=null;
@@ -1303,11 +1301,11 @@ async function useModule(s,m){
 function moduleIcon(parent,s){
  const usable=modules.filter(m=>!m.missing);if(!usable.length||s.cancelled)return;
  const used=usedModules(s).filter(id=>usable.some(m=>m.id===id));
- const b=iconButton('modules',used.length?'Modules utilisés : '+usable.filter(m=>used.includes(m.id)).map(m=>m.name).join(', '):'Utiliser un module',parent,'module-icon'+(used.length?' on':''));
+ const b=iconButton('modules',used.length?'Applications utilisées : '+usable.filter(m=>used.includes(m.id)).map(m=>m.name).join(', '):'Utiliser une application',parent,'module-icon'+(used.length?' on':''));
  if(used.length)el('span',used.length,b,'badge');
  b.onclick=()=>{
-  const d=sheet('Modules');
-  el('p','Tout ce que renvoie le module est importé dans cette séance.',d,'muted');
+  const d=sheet('Applications');
+  el('p','Tout ce que renvoie l’application est importé dans cette séance.',d,'muted');
   const list=el('div','',d,'module-list');
   for(const m of usable){
    const on=used.includes(m.id),n=data.results.filter(r=>r.sessionId===s.id&&r.module===m.name&&r.student).length;
@@ -1319,24 +1317,30 @@ function moduleIcon(parent,s){
   d.showModal();
  };
 }
-function renderModulesSettings(){
- const p=panel(view,'Modules');
- el('p','Un module est une application ajoutée dans le dossier modules/ de l’application. Elle reçoit vos classes et élèves, et renvoie ses notes, ses résultats et le résumé de chaque séance.',p,'muted');
- if(!modules.length)el('p','Aucun module trouvé.',p,'empty');
+// Page « Applications » : toutes les applications associées (dossier modules/), à ouvrir, synchroniser, ajouter ou retirer.
+async function renderApps(){
+ await modulesReady;
+ el('p','Les applications associées reçoivent vos classes et vos élèves, et renvoient leurs notes, leurs résultats et le résumé de chaque séance. Depuis une séance, l’icône puzzle les ouvre pour cette séance.',view,'muted');
+ if(!modules.length)el('p','Aucune application associée.',view,'empty');
+ const grid=el('div','',view,'list');
  for(const m of modules){
-  const r=el('div','',p,'row hist');const b=el('div','',r,'body');
-  el('span',m.name+(m.missing?' · introuvable':''),b,'title');
-  const s=moduleSync[m.id];
-  el('span',['dossier modules/'+m.id+'/',m.description,m.adapter?(s?'synchronisé à '+s.at.toLocaleTimeString('fr',{hour:'2-digit',minute:'2-digit'}):'liaison prête'):'sans liaison (ouverture seule)'].filter(Boolean).join(' · '),b,'meta');
-  if(!m.missing){link(r,'module='+m.id,'Ouvrir','btn small');if(m.adapter)button('Synchroniser',r,'small').onclick=async()=>{await syncModule(m);render()}}
-  if(m.fromSettings)iconButton('trash','Retirer de la liste',r,'danger').onclick=async()=>{await transaction('settings',t=>t.objectStore('settings').put({...settings(),modules:extraModules().filter(x=>x!==m.id).join(',')}));await load();modulesReady=discoverModules();await modulesReady;render()};
+  const card=el('article','',grid,'app-card'+(m.missing?' missing':''));
+  const top=el('div','',card,'top');icon('apps',el('span','',top,'avatar'));
+  const t=el('div','',top,'body');el('strong',m.name,t);el('span',m.missing?'Dossier modules/'+m.id+'/ introuvable':(m.description||''),t,'muted');
+  const sy=moduleSync[m.id];
+  if(!m.missing&&m.adapter)el('span',sy?'Synchronisée à '+sy.at.toLocaleTimeString('fr',{hour:'2-digit',minute:'2-digit'})+' · '+plural(sy.grades,'note')+' · '+plural(sy.results,'résultat'):'Notes et résultats repris automatiquement',card,'small muted');
+  const acts=el('div','',card,'item-actions');
+  if(!m.missing){link(acts,'module='+m.id,'Ouvrir','btn primary small');if(m.adapter)button('Synchroniser',acts,'small').onclick=async()=>{await syncModule(m);render()}}
+  if(m.fromSettings)iconButton('trash','Retirer de la liste',acts,'danger').onclick=async()=>{await transaction('settings',tx=>tx.objectStore('settings').put({...settings(),modules:extraModules().filter(x=>x!==m.id).join(',')}));await load();modulesReady=discoverModules();await modulesReady;render()};
  }
- const f=el('form','',p,'filters');
- const inp=el('input','',el('label','Ajouter un module (nom du dossier dans modules/)',f));inp.placeholder='ex. demi-fond';inp.required=true;
- el('button','Ajouter',f,'primary');
+ const add=panel(view,'Associer une application');
+ el('p','Copiez l’application dans un dossier de modules/ (avec son fichier eps-module.json), puis indiquez le nom du dossier.',add,'muted');
+ const f=el('form','',add,'filters');
+ const inp=el('input','',el('label','Nom du dossier',f));inp.placeholder='ex. demi-fond';inp.required=true;
+ el('button','Associer',f,'primary');
  f.onsubmit=async e=>{e.preventDefault();const n=inp.value.trim();if(!moduleNameOk(n))return notify('Nom de dossier invalide (lettres, chiffres, - et _).');
-  await transaction('settings',t=>t.objectStore('settings').put({...settings(),modules:[...new Set([...extraModules(),n])].join(',')}));await load();modulesReady=discoverModules();await modulesReady;render();
-  notify(modules.find(x=>x.id===n)?.missing?'Dossier modules/'+n+'/ introuvable ou sans eps-module.json.':'Module ajouté.')};
+  await transaction('settings',tx=>tx.objectStore('settings').put({...settings(),modules:[...new Set([...extraModules(),n])].join(',')}));await load();modulesReady=discoverModules();await modulesReady;render();
+  notify(modules.find(x=>x.id===n)?.missing?'Dossier modules/'+n+'/ introuvable ou sans eps-module.json.':'Application associée.')};
 }
 
 // ---------- Recherche ----------

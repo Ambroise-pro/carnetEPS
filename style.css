@@ -324,6 +324,14 @@ body.module-mode #view{gap:10px}
 .module-item .meta{font-size:13px;color:var(--muted);white-space:normal}
 .module-item.on{border:2px solid var(--primary);background:#f1f6e6}
 
+/* ---------- Applications ---------- */
+.app-card{background:var(--surface);border:1px solid var(--line);border-radius:18px;padding:16px;display:flex;flex-direction:column;gap:10px}
+.app-card .top{display:flex;gap:12px;align-items:flex-start}
+.app-card .body{display:flex;flex-direction:column;gap:2px;min-width:0}
+.app-card strong{font-size:18px}
+.app-card.missing{opacity:.6}
+.small{font-size:12px}
+
 /* ---------- Tablette portrait ---------- */
 @media (max-width:1023px){
   .sidebar{width:212px;padding-inline:10px}
