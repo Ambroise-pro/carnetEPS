@@ -1,6 +1,6 @@
 // Numéro de version affiché dans l'application : l'incrémenter à chaque nouvelle livraison
 // (et le reporter dans sw.js pour renouveler le cache hors ligne).
-const APP_VERSION=20;
+const APP_VERSION=21;
 
 // ---------- Structure de l'application ----------
 const pages={home:'Tableau de bord',calendar:'Calendrier',sessions:'Séances',attendance:'Appel',classes:'Classes',students:'Élèves',groups:'Groupes',cycles:'Cycles',restrictions:'Inaptitudes',grades:'Évaluations',comments:'Appréciations',observations:'Observations',planning:'Paramètres du calendrier',absences:'Absences',settings:'Paramètres',student:'Fiche élève',session:'Séance',boards:'Tableaux',board:'Tableau',module:'Application',apps:'Applications',averages:'Moyennes',years:'Années scolaires',backup:'Sauvegardes'};
@@ -1611,6 +1611,17 @@ function lockSettings(){
    const k=sheet('Clé de secours');
    el('p','Notez cette clé et gardez-la hors de la tablette. Elle permet de débloquer l’application si vous oubliez le code. Elle ne sera plus affichée.',k);
    el('p',key,k,'recovery-key');
+   // Garder la clé hors de la tablette : e-mail (application de messagerie configurée), partage ou copie.
+   const subject='EPS Manager · clé de secours',body='Clé de secours d’EPS Manager : '+key+'\n\nElle permet de débloquer l’application si vous oubliez votre code (écran de verrouillage › « Code oublié »).\nGardez ce message à l’abri : toute personne qui a cette clé peut débloquer l’application.\n\nCréée le '+new Date().toLocaleDateString('fr');
+   const mail=el('input','',el('label','Votre adresse e-mail (facultatif)',k));mail.type='email';mail.autocomplete='email';mail.value=settings().recoveryEmail||'';mail.placeholder='prenom.nom@exemple.fr';
+   const send=el('div','',k,'actions');
+   const mailLink=el('a','M’envoyer par e-mail',send,'btn primary');
+   const setHref=()=>{mailLink.href='mailto:'+encodeURIComponent(mail.value.trim())+'?subject='+encodeURIComponent(subject)+'&body='+encodeURIComponent(body)};
+   setHref();mail.oninput=setHref;
+   mailLink.onclick=async()=>{const to=mail.value.trim();notify('Votre messagerie s’ouvre avec la clé : envoyez le message.');
+    if(to&&to!==settings().recoveryEmail){await transaction('settings',t=>t.objectStore('settings').put({...settings(),recoveryEmail:to}));await load()}};
+   if(navigator.share)button('Partager…',send).onclick=()=>navigator.share({title:subject,text:body}).catch(()=>{});
+   button('Copier',send).onclick=()=>navigator.clipboard?.writeText(key).then(()=>notify('Clé copiée.'),()=>notify('Copie impossible : notez la clé.'));
    const cb=el('label','',k,'check');const c=el('input','',cb);c.type='checkbox';cb.append(' J’ai noté la clé de secours');
    const done=button('Terminer',el('div','',k,'actions'),'primary');done.disabled=true;c.onchange=()=>{done.disabled=!c.checked};
    done.onclick=()=>{k.close();render();notify('Code de verrouillage activé.')};
