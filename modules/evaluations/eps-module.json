@@ -1,0 +1,7 @@
+{
+  "name": "Évaluations",
+  "description": "Grilles par degrés (1 à 4) : critères et points par case, note sur 20 élève par élève.",
+  "entry": "index.html",
+  "adapter": "eps-adapter.js",
+  "classChoice": true
+}
