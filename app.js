@@ -1,6 +1,6 @@
 // Numéro de version affiché dans l'application : l'incrémenter à chaque nouvelle livraison
 // (et le reporter dans sw.js pour renouveler le cache hors ligne).
-const APP_VERSION=23;
+const APP_VERSION=24;
 
 // ---------- Structure de l'application ----------
 const pages={home:'Tableau de bord',calendar:'Calendrier',sessions:'Séances',attendance:'Appel',classes:'Classes',students:'Élèves',groups:'Groupes',cycles:'Cycles',restrictions:'Inaptitudes',grades:'Évaluations',comments:'Appréciations',observations:'Observations',planning:'Paramètres du calendrier',absences:'Absences',settings:'Paramètres',student:'Fiche élève',session:'Séance',boards:'Tableaux',board:'Tableau',module:'Application',apps:'Applications',averages:'Moyennes',years:'Années scolaires',backup:'Sauvegardes'};
@@ -781,6 +781,7 @@ function renderSettings(){
  lockSettings();
  periodsSettings();
  aiSettings();
+ traitsSettings();
  const cfg=settings();
  const p=panel(view,'Alertes « À surveiller »');
  el('p','Choisissez quand un élève apparaît dans le bloc « À surveiller » du tableau de bord.',p,'muted');
@@ -1803,16 +1804,44 @@ function periodFacts(st,period,periods){
  return {avg,prevAvg,abs:count(['Absent']),late:count(['Retard']),kit:count(['Oubli de tenue','Oubli de chaussures']),med:count(['Certificat médical']),sessions:calls.length,acts,practiced,inapt,obs};
 }
 // Adjectifs à cocher pour orienter l'appréciation : [identifiant, masculin, féminin, phrase (masc), phrase (fém)]
-const TRAITS={
+const DEFAULT_TRAITS={
  pos:[['investi','investi','investie'],['serieux','sérieux','sérieuse'],['motive','motivé','motivée'],['autonome','autonome','autonome'],['perseverant','persévérant','persévérante'],['respectueux','respectueux','respectueuse'],['moteur','moteur','motrice'],['ecoute','à l’écoute','à l’écoute'],['camarade','bon camarade','bonne camarade'],['dynamique','dynamique','dynamique'],['progres','en progrès','en progrès'],['arbitre','bon arbitre','bonne arbitre']],
  neg:[['bavard','bavard','bavarde','doit être moins bavard','doit être moins bavarde'],['disperse','dispersé','dispersée','doit rester plus concentré','doit rester plus concentrée'],['passif','passif','passive','doit s’engager davantage','doit s’engager davantage'],['retrait','en retrait','en retrait','doit oser davantage','doit oser davantage'],['irregulier','irrégulier','irrégulière','doit être plus régulier','doit être plus régulière'],['efforts','manque d’efforts','manque d’efforts','doit fournir plus d’efforts','doit fournir plus d’efforts'],['agite','agité','agitée','doit canaliser son énergie','doit canaliser son énergie'],['decourage','se décourage','se décourage','ne doit pas se décourager','ne doit pas se décourager'],['comportement','comportement à revoir','comportement à revoir','doit améliorer son comportement','doit améliorer son comportement'],['tenue','oublis de tenue','oublis de tenue','doit penser à sa tenue','doit penser à sa tenue']]
 };
-const traitWord=(t,fem)=>fem?t[2]:t[1];
+// Liste personnalisable (Paramètres ou bouton « Gérer les adjectifs ») : enregistrée en JSON dans settings.traits
+function traits(){const t=parseSetting('traits',null);return t&&Array.isArray(t.pos)&&Array.isArray(t.neg)?t:DEFAULT_TRAITS}
+const traitWord=(t,fem)=>fem?(t[2]||t[1]):t[1];
+async function saveTraits(t){await transaction('settings',x=>x.objectStore('settings').put({...settings(),traits:t?JSON.stringify(t):''}));await load()}
+function traitsEditor(box,onChange=()=>{}){
+ box.replaceChildren();
+ const t=structuredClone(traits());
+ const commit=async()=>{await saveTraits(t);onChange();traitsEditor(box,onChange)};
+ for(const [kind,title] of [['pos','Qualités (+)'],['neg','Points à améliorer (−)']]){
+  el('h3',title,box);
+  const g=el('div','',box,'trait-group '+kind);
+  if(!t[kind].length)el('span','Aucun adjectif.',g,'small muted');
+  for(const tr of t[kind]){const c=el('span','',g,'trait-edit');el('span',tr[1]+(tr[2]&&tr[2]!==tr[1]?' / '+tr[2]:''),c);
+   const x=button('×',c,'small');x.title='Supprimer « '+tr[1]+' »';x.setAttribute('aria-label',x.title);
+   x.onclick=()=>{t[kind]=t[kind].filter(o=>o[0]!==tr[0]);commit()}}
+  const f=el('form','',box,'filters trait-add');
+  const m=el('input','',el('label','Au masculin',f));m.required=true;m.placeholder=kind==='pos'?'ex. créatif':'ex. impulsif';
+  const w=el('input','',el('label','Au féminin',f));w.placeholder=kind==='pos'?'ex. créative':'ex. impulsive';
+  let pm,pf;if(kind==='neg'){pm=el('input','',el('label','Conseil (il)',f));pm.placeholder='ex. doit se maîtriser';pf=el('input','',el('label','Conseil (elle)',f));pf.placeholder='identique si vide'}
+  button('Ajouter',f,'primary').type='submit';
+  f.onsubmit=e=>{e.preventDefault();const mv=m.value.trim();if(!mv)return;const fv=w.value.trim()||mv;
+   if(t.pos.concat(t.neg).some(o=>o[1].toLowerCase()===mv.toLowerCase()))return notify('« '+mv+' » existe déjà.');
+   const row=[kind+'-'+Date.now().toString(36),mv,fv];if(kind==='neg'&&pm.value.trim())row.push(pm.value.trim(),pf.value.trim()||pm.value.trim());
+   t[kind].push(row);commit()};
+ }
+ const a=el('div','',box,'actions');
+ button('Rétablir la liste par défaut',a).onclick=async()=>{if(confirm('Remplacer votre liste par les adjectifs proposés par défaut ?')){await saveTraits(null);onChange();traitsEditor(box,onChange)}};
+}
+function traitsSettings(){const p=panel(view,'Appréciations : adjectifs à cocher');el('p','Ajoutez vos propres adjectifs ou supprimez ceux dont vous ne vous servez pas. Le féminin sert à accorder selon le sexe de l’élève ; le conseil (facultatif) est utilisé dans le brouillon sans IA.',p,'muted');traitsEditor(el('div','',p,'traits-editor'))}
 const joinFr=l=>l.length<2?(l[0]||''):l.slice(0,-1).join(', ')+' et '+l.at(-1);
 function draftAppreciation(st,f,periodName,variant=0,tags=[]){
  const fem=st.sex==='F',e=fem?'e':'',P=st.first,word=/semestre/i.test(periodName)?'semestre':/trimestre/i.test(periodName)?'trimestre':'année',W=word==='année'?'Année':word.charAt(0).toUpperCase()+word.slice(1);
  const pick=list=>list[([...st.id].reduce((a,c)=>a+c.charCodeAt(0),0)+variant)%list.length];
- const pos=TRAITS.pos.filter(t=>tags.includes(t[0])),neg=TRAITS.neg.filter(t=>tags.includes(t[0]));
+ const pos=traits().pos.filter(t=>tags.includes(t[0])),neg=traits().neg.filter(t=>tags.includes(t[0]));
  const a=f.avg,out=[];
  if(a==null)out.push(`Pas assez d’évaluations ce ${word} pour apprécier le travail de ${P}.`);
  else if(a>=16)out.push(pick([`Excellent${word==='année'?'e':''} ${word} : ${P} montre un très bon niveau et un réel investissement.`,`${W} excellent${word==='année'?'e':''}. ${P} s’engage pleinement et réussit très bien.`]));
@@ -1826,7 +1855,7 @@ function draftAppreciation(st,f,periodName,variant=0,tags=[]){
  if(pos.length)out.push(pick([`${fem?'Elle':'Il'} se montre ${joinFr(pos.map(t=>traitWord(t,fem)))}.`,`${P} est ${joinFr(pos.map(t=>traitWord(t,fem)))}.`]));
  if(a!=null&&f.prevAvg!=null){if(a-f.prevAvg>=1.5)out.push('Les progrès sont nets par rapport à la période précédente.');else if(f.prevAvg-a>=1.5)out.push('Les résultats sont en baisse par rapport à la période précédente.')}
  if(f.inapt.length)out.push(`${fem?'Elle':'Il'} a su rester impliqué${e} malgré une inaptitude.`);
- if(neg.length)out.push(`${fem?'Elle':'Il'} ${joinFr(neg.map(t=>fem?t[4]:t[3]))}.`);
+ const adv=neg.filter(t=>t[3]),bare=neg.filter(t=>!t[3]);if(adv.length)out.push(`${fem?'Elle':'Il'} ${joinFr(adv.map(t=>fem?(t[4]||t[3]):t[3]))}.`);if(bare.length)out.push(`Points à travailler : ${joinFr(bare.map(t=>traitWord(t,fem)))}.`);
  if(f.abs>=3)out.push(`Les absences (${f.abs}) freinent ses progrès.`);
  if(f.kit>=2&&!tags.includes('tenue'))out.push(`Attention aux oublis de tenue (${f.kit}).`);
  if(f.late>=3)out.push('La ponctualité doit s’améliorer.');
@@ -1839,7 +1868,7 @@ function draftAppreciation(st,f,periodName,variant=0,tags=[]){
 // les observations seulement si l'option est cochée. La clé d'API reste sur l'appareil.
 const aiReady=()=>!!settings().aiKey;
 function aiPrompt(st,f,periodName,tags){
- const fem=st.sex==='F',pos=TRAITS.pos.filter(t=>tags.includes(t[0])).map(t=>traitWord(t,fem)),neg=TRAITS.neg.filter(t=>tags.includes(t[0])).map(t=>traitWord(t,fem));
+ const fem=st.sex==='F',pos=traits().pos.filter(t=>tags.includes(t[0])).map(t=>traitWord(t,fem)),neg=traits().neg.filter(t=>tags.includes(t[0])).map(t=>traitWord(t,fem));
  const lines=[
   'Tu es professeur d’EPS au collège ou au lycée. Rédige l’appréciation du bulletin d’un élève pour la période « '+periodName+' ».',
   'Contraintes : 2 à 3 phrases, 300 caractères au maximum, en français, ton bienveillant, précis et professionnel ; accorde tout au '+(fem?'féminin (une élève)':st.sex==='G'?'masculin (un élève)':'masculin ou au féminin de façon neutre')+'.',
@@ -1890,6 +1919,7 @@ function appreciationPanel(){
  if(!aiReady()){const n=el('p','',p,'small muted');n.append('Rédaction par IA : ');link(n,'settings','configurer Gemini dans Paramètres');n.append('.')}
  if(!draftState)return;
  draftState.tags??={};
+ button('Gérer les adjectifs',f).onclick=()=>{const d=sheet('Adjectifs à cocher');el('p','Supprimez ou ajoutez des adjectifs ; les cases cochées sont conservées.',d,'muted');traitsEditor(el('div','',d,'traits-editor'));d.addEventListener('close',()=>render());d.showModal()};
  const period=periods.find(x=>x.name===draftState.period)||null,pname=period?.name||'Année';
  const pupils=pupilsOf(draftState.classId),cards={};
  const list=el('div','',p,'drafts');
@@ -1903,7 +1933,7 @@ function appreciationPanel(){
   el('p','Activités : '+(fx.practiced.length?fx.practiced.map(n=>{const a=fx.acts.find(x=>x.n.split(' · ')[0]===n);return n+(a?' ('+avgFmt(a.v)+')':'')}).join(', '):'aucune sur la période'),card,'small acts');
   // Adjectifs à cocher (accordés selon le sexe)
   const chips=el('div','',card,'traits');
-  for(const [kind,listT] of [['pos',TRAITS.pos],['neg',TRAITS.neg]]){
+  for(const [kind,listT] of [['pos',traits().pos],['neg',traits().neg]]){
    const g=el('div','',chips,'trait-group '+kind);el('span',kind==='pos'?'+':'−',g,'trait-sign');
    for(const tr of listT){const b=button(traitWord(tr,fem),g,'trait');b.setAttribute('aria-pressed',tags.includes(tr[0]));
     b.onclick=()=>{const i=tags.indexOf(tr[0]);if(i<0)tags.push(tr[0]);else tags.splice(i,1);b.setAttribute('aria-pressed',tags.includes(tr[0]));ta.value=draftAppreciation(st,fx,pname,variant,tags);ta.oninput()}}

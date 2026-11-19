@@ -389,6 +389,11 @@ details.import .segmented{margin:4px 0 12px}
 
 /* ---------- Appréciations : adjectifs et IA ---------- */
 .draft .acts{color:var(--ink)}
+.traits-editor{display:flex;flex-direction:column;gap:10px}
+.traits-editor h3{margin:6px 0 0;font-size:16px}
+.trait-edit{display:inline-flex;align-items:center;gap:4px;padding:2px 2px 2px 12px;border:1px solid var(--line);border-radius:999px;background:var(--surface);font-size:14px}
+.trait-edit button.small{min-height:32px;min-width:32px;padding:0;border-radius:999px;border:0;background:var(--line-soft);font-size:18px;line-height:1}
+.trait-add input{min-width:150px}
 .panel>label.check{flex-direction:row;align-items:center;gap:10px;color:var(--ink);min-height:44px}
 .traits{display:flex;flex-direction:column;gap:6px}
 .trait-group{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
