@@ -51,6 +51,7 @@ Suppressions en cascade : table `deps` dans `app.js` (ex. supprimer une classe s
 | Demi-fond | `eps-hub-v1`, `eps-hub-role`, `df-scan-ccf-v2`, `df-eps-export-v1`, `chronoCarnetEPS_v4`, `cc_classes`, `cc_history` (+ `sessionStorage` temporaire `eps-hub-roster`, `eps-hub-route`) | `chrono-eps`, `df-scan-ccf-backups`, `scan-document-eps-v1`, `eps-hub-photos` |
 | Co-évaluation | `df-coeval-v1`, `coeval-ui` | — |
 | Évaluations | `eps-evaluations-v1`, `eps-evaluations-context` | — |
+| Conquête (`conquete-laser`) | `lrc-device`, `lrc-station`, `lrc-demo-state-v1`, `lrc-eps-<code partie>` (lien partie ↔ classe) | — |
 | Applications du kit (SDK v1) | `eps-manager:<id>:context`, `eps-manager:outbox:<id>` | — |
 
 ## 4. Sauvegarde (format version 3)
@@ -94,6 +95,7 @@ Fichier JSON `eps-manager-AAAA-MM-JJ.json` produit par `exportBackup()` :
 - Gemini (appréciations) : seulement si une clé est saisie ; envoie sexe, période, moyennes, activités, assiduité, adjectifs (observations sur option) ; jamais nom, prénom ni besoins particuliers.
 - `api/ical.js` (Vercel) : relais de l'emploi du temps PRONOTE (le lien iCal transite par le relais, sans données d'élèves).
 - Clé de secours du verrouillage : lien `mailto:` ouvert par l'utilisateur.
+- Conquête : prénoms des élèves présents envoyés au serveur de jeu (Vercel/Firebase) à la création d'une partie ; les élèves rejoignent par QR code.
 
 ## 7. Points de vigilance relevés (à traiter dans les lots suivants)
 

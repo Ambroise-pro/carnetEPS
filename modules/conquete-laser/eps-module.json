@@ -1,0 +1,10 @@
+{
+  "name": "Conquête (Laser Run / demi-fond)",
+  "description": "Jeu de conquête de territoires en temps réel : les tirs ou les tours de piste rapportent des points d'action. Classement et performances par élève.",
+  "entry": "index.html",
+  "adapter": "eps-adapter.js",
+  "classChoice": true,
+  "version": "1.0",
+  "server": "https://conquete-laser.vercel.app",
+  "source": "https://github.com/Ambroise-pro/conquete-laser"
+}

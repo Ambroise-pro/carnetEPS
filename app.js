@@ -1,6 +1,6 @@
 // Numéro de version affiché dans l'application : l'incrémenter à chaque nouvelle livraison
 // (et le reporter dans sw.js pour renouveler le cache hors ligne).
-const APP_VERSION=27;
+const APP_VERSION=28;
 
 // ---------- Structure de l'application ----------
 const pages={home:'Tableau de bord',calendar:'Calendrier',sessions:'Séances',attendance:'Appel',classes:'Classes',students:'Élèves',groups:'Groupes',cycles:'Cycles',restrictions:'Inaptitudes',grades:'Évaluations',comments:'Appréciations',observations:'Observations',planning:'Paramètres du calendrier',absences:'Absences',settings:'Paramètres',student:'Fiche élève',session:'Séance',boards:'Tableaux',board:'Tableau',module:'Application',apps:'Applications',averages:'Moyennes',years:'Années scolaires',backup:'Sauvegardes'};
@@ -1782,7 +1782,7 @@ function restorePointPanel(){
 }
 const appsInBackup=x=>{const l=Object.keys(x?.localStorage||{}),names=[];
  if(l.some(k=>/^(eps-hub|df-scan|cc_|chronoCarnet)/.test(k)))names.push('Demi-fond');if(l.includes('df-coeval-v1'))names.push('Co-évaluation Bac');
- if(l.includes('eps-evaluations-v1'))names.push('Évaluations');if(l.some(k=>k.startsWith('eps-manager:')))names.push('applications du kit');
+ if(l.includes('eps-evaluations-v1'))names.push('Évaluations');if(l.some(k=>k.startsWith('lrc-')))names.push('Conquête');if(l.some(k=>k.startsWith('eps-manager:')))names.push('applications du kit');
  if((x?.indexedDB||[]).some(d=>d.name==='mon-tableau-blanc-documents'))names.push('documents des tableaux');return names};
 const mb=n=>(n/1048576).toFixed(n<1048576?2:1).replace('.',',')+' Mo';
 

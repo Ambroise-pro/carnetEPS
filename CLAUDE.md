@@ -27,7 +27,7 @@ Faire évoluer EPS Manager en carnet de bord pédagogique d'EPS, prioritairement
 - `style.css` : styles principaux ; `board/board.js`, `board/host.js`, `board/board.css`, `board/host.css` : tableaux.
 - `sw.js` : `VERSION=25`, cache `eps-v25`, stratégie réseau d'abord puis cache hors ligne ; précacher le shell.
 - Base `indexedDB.open('eps-manager',5)` ; magasins actuels : `years`, `classes`, `students`, `groups`, `cycles`, `sessions`, `attendance`, `restrictions`, `grades`, `comments`, `observations`, `holidays`, `timetable`, `settings`, `results`, `boards`.
-- `modules/modules.json` : `demi-fond`, `coeval`, `evaluations`.
+- `modules/modules.json` : `demi-fond`, `coeval`, `evaluations`, `conquete-laser`.
 - `modules/README.md` et `modules/sdk/README.md` décrivent le protocole actuel.
 - `modules/sdk/eps-sdk.js` (SDK 1.0), `modules/sdk/eps-adapter.js` : contexte via `localStorage` et outbox ; `beforeOpen`, `refresh`, `collect`.
 - `modules/evaluations/eval.js`, `modules/evaluations/eps-adapter.js`, `modules/coeval/eps-adapter.js`, `modules/demi-fond/eps-adapter.js` sont des points d'intégration existants.
@@ -38,6 +38,7 @@ Fonctions déjà demandées par l'utilisateur qui communiquent avec l'extérieur
 - génération d'appréciations par Gemini (v23) : active seulement si une clé est saisie ; nom, prénom et besoins particuliers jamais envoyés, observations seulement sur option ;
 - relais `api/ical.js` (Vercel) pour l'emploi du temps PRONOTE : aucun lien iCal ni jeton ne doit être enregistré dans le dépôt ;
 - envoi de la clé de secours du verrouillage par lien `mailto:`.
+- application associée Conquête (`modules/conquete-laser/`, dépôt `Ambroise-pro/conquete-laser`, ajoutée le 19/11/2026) : jeu en ligne ; les prénoms des élèves présents (initiale du nom en cas d'homonyme) sont envoyés au serveur de jeu (`server` de son `eps-module.json`, Vercel/Firebase) à la création d'une partie. Dossier produit par `npm run build:eps` dans son dépôt : ne pas le modifier à la main, sauf `eps-module.json`.
 
 **Avant chaque phase, relire le dépôt réel.** Les noms de fonctions, versions et chemins peuvent avoir changé depuis ce constat. Ne jamais présumer qu'un fichier proposé ci-dessous existe déjà.
 

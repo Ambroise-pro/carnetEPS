@@ -25,6 +25,7 @@ Un seul fichier : `node --test tests/e2e/05-sauvegarde.test.mjs`. Durée totale 
 | `05-sauvegarde` | 8 : sauvegarde → effacement total → restauration identique (magasins, identifiants, photos, localStorage, bases des applications avec fichiers) ; fichiers tronqués, version future, valeurs invalides refusés sans modification |
 | `06-applications` | 6, 7 : modules déclarés, pages d'entrée, liaisons SDK v1 (`collect`), aucune liaison en erreur, tableaux |
 | `07-securite` | injection HTML dans un prénom affichée en texte, jamais exécutée |
+| `09-conquete` | 7 : application Conquête ouverte depuis EPS Manager, classes reçues, résultat repris dans la séance du jour, sans doublon (serveur de jeu non contacté) |
 | `08-restauration-sure` | 8 (lot 0.2) : inventaire et SHA-256 dans le fichier, fichier modifié refusé, ancien fichier accepté, échec en cours de restauration → retour automatique complet, annulation de la dernière restauration, reprise d'une restauration interrompue, copie avant les données d'exemple |
 
 ## Organisation

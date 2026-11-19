@@ -29,13 +29,13 @@ test('chaque application s’ouvre et sa liaison exporte collect() (SDK v1)', as
   } finally { await close(); }
 });
 
-test('page Applications : les trois applications sont listées, aucune liaison en erreur', async () => {
+test('page Applications : toutes les applications déclarées sont listées, aucune liaison en erreur', async () => {
   const {page, errors, close} = await open();
   try {
     await go(page, 'apps');
     await page.waitForTimeout(1500);
     const view = await page.locator('#view').innerText();
-    for (const name of ['Demi-fond', 'Évaluations']) assert.match(view, new RegExp(name));
+    for (const name of ['Demi-fond', 'Évaluations', 'Conquête']) assert.match(view, new RegExp(name));
     assert.doesNotMatch(view, /Liaison en erreur/);
     assert.deepEqual(errors, []);
   } finally { await close(); }
