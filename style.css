@@ -412,6 +412,12 @@ button.trait{min-height:36px;padding:0 12px;font-size:14px;border-radius:999px;b
 .pos button.trait[aria-pressed=true]{background:var(--accent);border-color:var(--primary);font-weight:600}
 .neg button.trait[aria-pressed=true]{background:var(--warn-bg);border-color:var(--danger);color:var(--warn-ink);font-weight:600}
 
+/* ---------- Téléphone : éviter les débordements horizontaux (relevés par tests/e2e/01-demarrage) ---------- */
+.kpi{min-width:0}
+.kpi b{overflow-wrap:anywhere}
+@media (max-width:480px){.kpis{grid-template-columns:repeat(auto-fit,minmax(140px,1fr))}.kpi{padding:12px 14px}.kpi b{font-size:24px}}
+@media (max-width:600px){.period-row{grid-template-columns:1fr 1fr}.period-row>:first-child{grid-column:1/-1}.period-row input{min-width:0;width:100%}}
+
 /* ---------- Tablette portrait ---------- */
 @media (max-width:1023px){
   .sidebar{width:212px;padding-inline:10px}
