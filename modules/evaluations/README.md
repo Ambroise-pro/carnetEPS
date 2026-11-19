@@ -22,6 +22,17 @@ Grilles d'évaluation par degrés, note sur 20.
 - Pour chaque cycle en cours ou à venir, l'évaluation finale est créée automatiquement à la date de la dernière séance.
 - Ouverte depuis une séance qui a une évaluation (classe et date), l'application l'ouvre directement.
 
+## Auto-évaluation et co-évaluation
+- Dans une évaluation par degrés : « Auto / co-évaluation ».
+- Téléphones des élèves : ils scannent le QR code (page `eleve.html` : grille et liste de la classe dans le lien),
+  choisissent leur nom, s'évaluent ou évaluent un camarade, puis montrent leur QR de réponse ; le professeur le scanne
+  avec la caméra de la tablette (ou colle le code affiché sous le QR). Rien ne passe par un serveur.
+- Sur cette tablette : l'élève s'évalue sur un écran simplifié, sans voir la note du professeur.
+- Comparaison : pastilles A (auto) et C (co) sur les cases, notes et écart sous la grille, colonnes Auto / Co / Écart
+  dans le bilan. Grilles longues : critères raccourcis dans le QR code si besoin.
+- Nécessite une application publiée en HTTPS (page élève et caméra).
+- Bibliothèques : qrcode.js (MIT) et jsQR (Apache-2.0) dans `vendor/` (voir `vendor/LICENSES.md`).
+
 ## En direct depuis EPS Manager
 - Inaptitude en cours et statut à l'appel du jour affichés sur les élèves (raccourcis « Dispensé », « Marquer absent »).
 

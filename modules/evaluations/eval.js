@@ -89,6 +89,7 @@ function render() {
   app.replaceChildren();
   if (screen.name === 'grid') return screen.draft.type === 'perf' ? renderPerfEditor() : renderGridEditor();
   if (screen.name === 'eval') return renderEval();
+  if (screen.name === 'kiosk') return renderKiosk();
   renderHome();
 }
 
@@ -317,6 +318,7 @@ function renderEval() {
     h('div', {}, h('button', {type: 'button', class: 'link', onclick: () => go({name: 'home'})}, '← Évaluations'),
       h('h1', {}, ev.title), h('p', {class: 'muted'}, [classOf(ev.classId)?.name, dayLabel(ev.date), perf ? 'barème de performance → /20' : 'barème ' + fmt(gridMax(ev.grid)) + ' pts → /20', ev.cycleId ? 'évaluation finale du cycle ' + (ev.cycleName || '') : ''].filter(Boolean).join(' · '))),
     h('div', {class: 'actions'},
+      perf ? null : h('button', {type: 'button', onclick: () => selfEvalDialog(ev)}, 'Auto / co-évaluation'),
       perf ? h('button', {type: 'button', onclick: () => perfCSV(ev, students)}, 'Exporter en CSV') : h('button', {type: 'button', 'aria-pressed': String(!!screen.summary), onclick: () => { screen.summary = !screen.summary; render(); }}, screen.summary ? 'Retour à la saisie' : 'Bilan de la classe'),
       h('button', {type: 'button', class: 'danger', onclick: () => { if (!confirm('Supprimer cette évaluation et toutes ses notes ?')) return; db.evals = db.evals.filter(e => e !== ev); save(); go({name: 'home'}); }}, 'Supprimer'))));
   if (!students.length) { app.append(h('p', {class: 'empty'}, 'Cette classe n’a pas d’élèves. Ouvrez l’application depuis EPS Manager pour mettre à jour la liste.')); return; }
@@ -352,6 +354,9 @@ function studentPanel(ev, students) {
     r.cells.forEach((c, d) => {
       const on = m?.deg === d + 1;
       const cell = h('div', {class: 'eg-cell d' + (d + 1) + (on ? ' on' : '')});
+      // Choix des élèves : A = auto-évaluation, C = co-évaluation
+      const selfOn = ev.self?.[s.id]?.rows?.[r.id]?.deg === d + 1, peerN = (ev.peer?.[s.id] || []).filter(x => x.rows?.[r.id]?.deg === d + 1).length;
+      if (selfOn || peerN) cell.append(h('span', {class: 'others'}, selfOn ? h('b', {class: 'b-self', title: 'Auto-évaluation de l’élève'}, 'A') : null, peerN ? h('b', {class: 'b-peer', title: 'Co-évaluation (' + peerN + ')'}, 'C' + (peerN > 1 ? '×' + peerN : '')) : null));
       cell.append(h('button', {type: 'button', class: 'eg-pick', disabled: !!mark.status, 'aria-pressed': String(on), 'aria-label': `${r.label || 'Ligne'}, degré ${d + 1}, ${fmt(cellMin(c))} à ${fmt(cellMax(c))} points`,
         onclick: () => { const mk = markOf(ev, s.id); if (on) delete mk.rows[r.id]; else mk.rows[r.id] = {deg: d + 1, pts: cellMax(c)}; touch(ev, s.id); }},
         h('span', {class: 'eg-text'}, c.text || 'Degré ' + (d + 1)),
@@ -367,6 +372,11 @@ function studentPanel(ev, students) {
     grid.append(row);
   }
   panel.append(grid);
+  const o = otherScores(ev, s.id), mine = scoreOf(ev, mark, s);
+  if (o.self != null || o.peer != null) panel.append(h('p', {class: 'compare'},
+    o.self != null ? h('span', {}, h('b', {class: 'b-self'}, 'A'), ' Auto-évaluation : ' + fmt(o.self) + ' / 20') : null,
+    o.peer != null ? h('span', {}, h('b', {class: 'b-peer'}, 'C'), ' Co-évaluation' + (o.peers > 1 ? ' (' + o.peers + ')' : '') + ' : ' + fmt(o.peer) + ' / 20') : null,
+    mine.complete ? h('span', {}, 'Ta note : ' + fmt(mine.note) + (o.self != null ? ' · écart avec l’auto-évaluation : ' + (mine.note - o.self > 0 ? '+' : '') + fmt(mine.note - o.self) : '')) : null));
   panel.append(h('label', {class: 'comment'}, 'Commentaire (facultatif)', h('textarea', {rows: 2, value: mark.comment || '', onchange: e => { markOf(ev, s.id).comment = e.target.value; ev.marks[s.id].updatedAt = Date.now(); save(); }})));
   const sc = scoreOf(ev, mark);
   panel.append(h('footer', {class: 'total-bar'},
@@ -430,11 +440,13 @@ function renderSummary(ev, students) {
     h('div', {class: 'kpi'}, h('span', {}, 'Note la plus basse'), h('b', {}, notes.length ? fmt(Math.min(...notes)) : '—')),
     h('div', {class: 'kpi'}, h('span', {}, 'Note la plus haute'), h('b', {}, notes.length ? fmt(Math.max(...notes)) : '—'))));
   const g = ev.grid;
-  const table = h('table', {}, h('thead', {}, h('tr', {}, h('th', {}, 'Élève'), ...g.rows.map(r => h('th', {class: 'num'}, (r.label || 'Ligne') + ' /' + fmt(rowMax(r)))), h('th', {class: 'num'}, 'Total /' + fmt(gridMax(g))), h('th', {class: 'num'}, 'Note /20'))));
+  const others = hasOthers(ev);
+  const table = h('table', {}, h('thead', {}, h('tr', {}, h('th', {}, 'Élève'), ...g.rows.map(r => h('th', {class: 'num'}, (r.label || 'Ligne') + ' /' + fmt(rowMax(r)))), h('th', {class: 'num'}, 'Total /' + fmt(gridMax(g))), h('th', {class: 'num'}, 'Note /20'), others ? [h('th', {class: 'num'}, 'Auto /20'), h('th', {class: 'num'}, 'Co /20'), h('th', {class: 'num'}, 'Écart auto')] : null)));
   const body = h('tbody');
   for (const {s, sc, mark} of rows) body.append(h('tr', {onclick: () => { screen.summary = false; screen.student = s.id; render(); }},
     h('th', {}, studentName(s)), ...g.rows.map(r => h('td', {class: 'num'}, mark?.rows?.[r.id] ? fmt(mark.rows[r.id].pts) + ' (D' + mark.rows[r.id].deg + ')' : '')),
-    h('td', {class: 'num'}, sc.status || !sc.done ? '' : fmt(sc.sum)), h('td', {class: 'num strong'}, sc.status ? STATUS[sc.status] : sc.complete ? fmt(sc.note) : '…')));
+    h('td', {class: 'num'}, sc.status || !sc.done ? '' : fmt(sc.sum)), h('td', {class: 'num strong'}, sc.status ? STATUS[sc.status] : sc.complete ? fmt(sc.note) : '…'),
+    others ? (() => { const o = otherScores(ev, s.id), gap = sc.complete && o.self != null ? sc.note - o.self : null; return [h('td', {class: 'num'}, o.self != null ? fmt(o.self) : ''), h('td', {class: 'num'}, o.peer != null ? fmt(o.peer) : ''), h('td', {class: 'num' + (gap != null && Math.abs(gap) >= 3 ? ' strong' : '')}, gap != null ? (gap > 0 ? '+' : '') + fmt(gap) : '')]; })() : null));
   table.append(body);
   app.append(h('div', {class: 'table-box'}, table));
   app.append(h('div', {class: 'toolbar'}, h('button', {type: 'button', onclick: () => {
@@ -601,6 +613,110 @@ function perfCSV(ev, students) {
   const csv = [['Nom', 'Prénom', 'Sexe', PERF_UNITS[g.unit], 'Note /20'], ...lines].map(l => l.map(v => '"' + String(v).replace(/"/g, '""') + '"').join(';')).join('\n');
   const a = h('a', {href: URL.createObjectURL(new Blob(['\ufeff' + csv], {type: 'text/csv'})), download: (ev.title + '-' + (classOf(ev.classId)?.name || '')).replace(/[^\w-]+/g, '_') + '.csv'});
   document.body.append(a); a.click(); a.remove();
+}
+
+/* ---------- Auto-évaluation et co-évaluation ----------
+   Téléphones des élèves : QR code (grille + liste de la classe) → page élève → QR de réponse scanné ici.
+   Sur cette tablette : l'élève s'évalue sur un écran simplifié, sans voir la note du professeur.
+   Réponses : ev.self[élève] = {rows, at} ; ev.peer[élève] = [{by, rows, at}]. */
+function rowsScore(ev, rows) {
+  const g = ev.grid, max = gridMax(g); if (!rows || !max) return null;
+  let s = 0; for (const r of g.rows) { const m = rows[r.id]; if (!m) return null; s += num(m.pts); }
+  return round(s / max * 20);
+}
+function otherScores(ev, sid) {
+  const self = rowsScore(ev, ev.self?.[sid]?.rows), peers = (ev.peer?.[sid] || []).map(p => rowsScore(ev, p.rows)).filter(v => v != null);
+  return {self, peer: peers.length ? round(peers.reduce((a, b) => a + b, 0) / peers.length) : null, peers: peers.length};
+}
+const hasOthers = ev => Object.keys(ev.self || {}).length || Object.keys(ev.peer || {}).length;
+function answerRows(ev, degs) {
+  const rows = {};
+  ev.grid.rows.forEach((r, i) => { const d = Number(degs?.[i]); if (d >= 1 && d <= 4) rows[r.id] = {deg: d, pts: cellMax(r.cells[d - 1])}; });
+  return Object.keys(rows).length === ev.grid.rows.length ? rows : null;
+}
+function storeAnswer(ev, by, target, mode, rows) {
+  if (mode === 'self') (ev.self ||= {})[target] = {rows, at: Date.now()};
+  else { const list = ((ev.peer ||= {})[target] || []).filter(p => p.by !== by); list.push({by, rows, at: Date.now()}); ev.peer[target] = list; }
+  save();
+}
+async function importAnswer(text) {
+  if (!String(text).includes(EPSShare.PREFIX)) throw Error('Ce n’est pas une réponse d’évaluation.');
+  const a = await EPSShare.unpack(text), ev = db.evals.find(e => e.id === a.e);
+  if (!ev) throw Error('Réponse d’une autre évaluation (introuvable sur cette tablette).');
+  const st = studentsOf(ev.classId), by = st.find(s => s.id === a.by), target = st.find(s => s.id === a.for);
+  if (!by || !target) throw Error('Élève inconnu dans cette classe.');
+  const rows = answerRows(ev, a.r); if (!rows) throw Error('Réponse incomplète.');
+  storeAnswer(ev, by.id, target.id, a.m === 'peer' ? 'peer' : 'self', rows);
+  return (a.m === 'peer' ? 'Co-évaluation de ' + studentName(target) + ' par ' + studentName(by) : 'Auto-évaluation de ' + studentName(target)) + ' reçue.';
+}
+async function studentPayload(ev) {
+  const g = ev.grid, base = {v: 1, e: ev.id, t: ev.title, c: classOf(ev.classId)?.name || '', s: studentsOf(ev.classId).map(s => [s.id, studentName(s)])};
+  // Le QR code a une capacité limitée : les critères sont raccourcis si besoin.
+  for (const cut of [Infinity, 80, 40, 0]) {
+    const r = g.rows.map(x => ({l: x.label, c: x.cells.map(c => [cut === Infinity ? c.text : String(c.text || '').slice(0, cut), cellMin(c), cellMax(c)])}));
+    const code = await EPSShare.pack({...base, g: {st: g.step, r}}), url = new URL('eleve.html', location.href).href + '#' + code;
+    if (url.length <= 2300 || cut === 0) return {url, cut};
+  }
+}
+function selfEvalDialog(ev) {
+  const students = studentsOf(ev.classId);
+  let stopScan = null;
+  const box = h('div', {class: 'self-dialog'});
+  const d = dialog('Auto-évaluation et co-évaluation', box, close => [h('button', {type: 'button', onclick: close}, 'Fermer')]);
+  d.addEventListener('close', () => { stopScan?.(); render(); });
+  // 1. Téléphones des élèves
+  const phones = h('section', {class: 'panel'}, h('h3', {}, 'Sur les téléphones des élèves'),
+    h('p', {class: 'muted'}, 'Les élèves scannent ce QR code, choisissent leur nom, s’évaluent ou évaluent un camarade, puis montrent leur QR de réponse.'));
+  const qr = h('div', {class: 'qr'}, 'Préparation du QR code…');
+  phones.append(qr);
+  studentPayload(ev).then(async ({url, cut}) => {
+    const svg = await EPSShare.qrSvg(url);
+    qr.innerHTML = svg || ''; if (!svg) qr.textContent = 'Grille trop longue pour un QR code : utilisez le mode tablette.';
+    if (cut !== Infinity) phones.append(h('p', {class: 'small muted'}, cut ? 'Critères raccourcis pour tenir dans le QR code.' : 'Seuls les intitulés des lignes tiennent dans le QR code.'));
+    phones.append(h('div', {class: 'actions'}, h('button', {type: 'button', class: 'small', onclick: () => navigator.clipboard?.writeText(url).then(() => toast('Lien copié.'))}, 'Copier le lien')));
+  }).catch(() => { qr.textContent = 'QR code impossible sur cet appareil : utilisez le mode tablette.'; });
+  const scanZone = h('div', {class: 'scan'}), scanMsg = h('p', {class: 'muted'}, '');
+  const scanBtn = h('button', {type: 'button', class: 'primary', onclick: async () => {
+    if (stopScan) { stopScan(); stopScan = null; scanBtn.textContent = 'Scanner les réponses'; return; }
+    try { stopScan = await EPSShare.scanner(scanZone, async text => { try { const msg = await importAnswer(text); scanMsg.textContent = msg; toast(msg); } catch (e) { scanMsg.textContent = e.message; } }); scanBtn.textContent = 'Arrêter la caméra'; scanMsg.textContent = 'Présentez les QR codes de réponse devant la caméra.'; }
+    catch { scanMsg.textContent = 'Caméra indisponible (autorisation refusée ou page non sécurisée) : collez le code de réponse ci-dessous.'; }
+  }}, 'Scanner les réponses');
+  const paste = h('textarea', {rows: 2, placeholder: 'Ou collez ici le code de réponse de l’élève (EPSEVAL1:…)'});
+  phones.append(h('div', {class: 'actions'}, scanBtn), scanZone, scanMsg, paste,
+    h('div', {class: 'actions'}, h('button', {type: 'button', onclick: async () => { try { toast(await importAnswer(paste.value)); paste.value = ''; } catch (e) { toast(e.message); } }}, 'Importer le code')));
+  // 2. Sur cette tablette
+  const who = h('select', {}, ...students.map(s => h('option', {value: s.id, selected: s.id === screen.student}, studentName(s))));
+  const mode = h('select', {}, h('option', {value: 'self'}, 'S’évalue lui-même'), h('option', {value: 'peer'}, 'Évalue un camarade'));
+  const target = h('select', {disabled: true}, ...students.map(s => h('option', {value: s.id}, studentName(s))));
+  mode.onchange = () => { target.disabled = mode.value !== 'peer'; };
+  const tablet = h('section', {class: 'panel'}, h('h3', {}, 'Sur cette tablette'),
+    h('p', {class: 'muted'}, 'Tendez la tablette à l’élève : il voit la grille sans votre note.'),
+    h('div', {class: 'form row3'}, h('label', {}, 'Élève', who), h('label', {}, 'Type', mode), h('label', {}, 'Camarade évalué', target)),
+    h('div', {class: 'actions'}, h('button', {type: 'button', class: 'primary', onclick: () => {
+      const t = mode.value === 'peer' ? target.value : who.value;
+      if (mode.value === 'peer' && t === who.value) return toast('Choisissez un autre élève à évaluer.');
+      d.close(); go({name: 'kiosk', id: ev.id, by: who.value, target: t, mode: mode.value, picks: {}});
+    }}, 'Commencer sur cette tablette')));
+  box.append(phones, tablet);
+}
+function renderKiosk() {
+  const ev = db.evals.find(e => e.id === screen.id); if (!ev) return go({name: 'home'});
+  const st = studentsOf(ev.classId), by = st.find(s => s.id === screen.by), target = st.find(s => s.id === screen.target);
+  app.append(h('header', {class: 'top'}, h('div', {}, h('h1', {}, ev.title), h('p', {class: 'muted'}, screen.mode === 'self' ? 'Auto-évaluation de ' + studentName(target) : studentName(by) + ' évalue ' + studentName(target))),
+    h('button', {type: 'button', onclick: () => { if (confirm('Quitter sans enregistrer ?')) go({name: 'eval', id: ev.id}); }}, 'Quitter')));
+  app.append(h('p', {class: 'muted'}, 'Pour chaque ligne, touche la case qui correspond le mieux. Degré 1 : le plus faible, degré 4 : le meilleur.'));
+  ev.grid.rows.forEach((r, i) => {
+    const box = h('section', {class: 'panel eleve-row kiosk'}, h('h2', {}, r.label || 'Ligne ' + (i + 1)));
+    const cells = h('div', {class: 'kiosk-cells'});
+    r.cells.forEach((c, d) => cells.append(h('button', {type: 'button', class: 'eleve-cell d' + (d + 1) + (screen.picks[i] === d + 1 ? ' on' : ''), 'aria-pressed': String(screen.picks[i] === d + 1), onclick: () => { screen.picks[i] = d + 1; render(); }},
+      h('strong', {}, 'Degré ' + (d + 1)), c.text ? h('span', {}, c.text) : null)));
+    box.append(cells); app.append(box);
+  });
+  const done = ev.grid.rows.every((_, i) => screen.picks[i]);
+  app.append(h('div', {class: 'toolbar'}, h('button', {type: 'button', class: 'primary', disabled: !done, onclick: () => {
+    const rows = answerRows(ev, ev.grid.rows.map((_, i) => screen.picks[i])); if (!rows) return;
+    storeAnswer(ev, by.id, target.id, screen.mode, rows); toast('Évaluation enregistrée. Merci !'); go({name: 'eval', id: ev.id, student: target.id});
+  }}, done ? 'Valider mon évaluation' : 'Réponds à toutes les lignes')));
 }
 
 applyCtx();
