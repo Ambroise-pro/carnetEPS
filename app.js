@@ -1,15 +1,15 @@
 // Numéro de version affiché dans l'application : l'incrémenter à chaque nouvelle livraison
 // (et le reporter dans sw.js pour renouveler le cache hors ligne).
-const APP_VERSION=1;
+const APP_VERSION=2;
 
 // ---------- Structure de l'application ----------
-const pages={home:'Tableau de bord',calendar:'Calendrier',sessions:'Séances',attendance:'Appel',classes:'Classes',students:'Élèves',groups:'Groupes',cycles:'Cycles',restrictions:'Inaptitudes',grades:'Évaluations',comments:'Appréciations',observations:'Observations',planning:'Paramètres du calendrier',years:'Années scolaires',backup:'Sauvegardes'};
+const pages={home:'Tableau de bord',calendar:'Calendrier',sessions:'Séances',attendance:'Appel',classes:'Classes',students:'Élèves',groups:'Groupes',cycles:'Cycles',restrictions:'Inaptitudes',grades:'Évaluations',comments:'Appréciations',observations:'Observations',planning:'Paramètres du calendrier',absences:'Absences',settings:'Paramètres',student:'Fiche élève',years:'Années scolaires',backup:'Sauvegardes'};
 const navLabels={planning:'Emploi du temps'};
 const navGroups=[
  ['Quotidien',['home','calendar','sessions','attendance']],
  ['Mes élèves',['classes','students','groups','cycles','restrictions']],
- ['Suivi',['grades','comments','observations']],
- ['Réglages',['planning','years','backup']]
+ ['Suivi',['absences','grades','comments','observations']],
+ ['Réglages',['settings','planning','years','backup']]
 ];
 const icons={
  home:'M3 10l9-7 9 7v10a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z',
@@ -27,6 +27,9 @@ const icons={
  comments:'M4 5h16v11H8l-4 4z',
  observations:'M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12zM12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z',
  backup:'M12 4v11M7 10l5 5 5-5M5 20h14',
+ absences:'M4 5h16v16H4zM4 10h16M8 3v4M16 3v4M9.5 13.5l5 5M14.5 13.5l-5 5',
+ settings:'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1',
+ student:'M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4 21c0-4 4-6 8-6s8 2 8 6',
  timetable:'M12 7v5l3 2M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18z',
  holidays:'M12 3v2M12 19v2M5 5l1.5 1.5M17.5 17.5L19 19M3 12h2M19 12h2M5 19l1.5-1.5M17.5 6.5L19 5M12 16a4 4 0 1 0 0-8 4 4 0 0 0 0 8z',
  edit:'M4 20h4L19 9l-4-4L4 16z',
@@ -35,7 +38,7 @@ const icons={
  prev:'M15 6l-6 6 6 6',
  next:'M9 6l6 6-6 6'
 };
-const stores=['years','classes','students','groups','cycles','sessions','attendance','restrictions','grades','comments','observations','holidays','timetable'];
+const stores=['years','classes','students','groups','cycles','sessions','attendance','restrictions','grades','comments','observations','holidays','timetable','settings'];
 const enums={
  duration:[['30','30 min'],['45','45 min'],['55','55 min'],['60','1 h'],['90','1 h 30'],['110','1 h 50'],['120','2 h'],['165','2 h 45'],['180','3 h'],['240','4 h']],
  weekday:[['1','Lundi'],['2','Mardi'],['3','Mercredi'],['4','Jeudi'],['5','Vendredi'],['6','Samedi']],
@@ -74,7 +77,7 @@ const statuses=Object.keys(statusInfo);
 const cancelReasons=['Jour férié','Sortie scolaire','Voyage scolaire','Grève','Absence de l’enseignant','Formation','Conseil de classe / réunion','Examens / brevet blanc','Installation indisponible','Météo'];
 
 // ---------- Données locales (IndexedDB) ----------
-const db=await new Promise((ok,no)=>{const r=indexedDB.open('eps-manager',2);r.onupgradeneeded=()=>{for(const k of stores)if(!r.result.objectStoreNames.contains(k))r.result.createObjectStore(k,{keyPath:'id'})};r.onsuccess=()=>ok(r.result);r.onerror=()=>no(r.error)});
+const db=await new Promise((ok,no)=>{const r=indexedDB.open('eps-manager',3);r.onupgradeneeded=()=>{for(const k of stores)if(!r.result.objectStoreNames.contains(k))r.result.createObjectStore(k,{keyPath:'id'})};r.onsuccess=()=>ok(r.result);r.onerror=()=>no(r.error)});
 const data={};
 async function load(){await Promise.all(stores.map(k=>new Promise((ok,no)=>{const r=db.transaction(k).objectStore(k).getAll();r.onsuccess=()=>{data[k]=r.result;ok()};r.onerror=()=>no(r.error)})))}
 function transaction(names,fn){return new Promise((ok,no)=>{const t=db.transaction(names,'readwrite');t.oncomplete=ok;t.onabort=()=>no(t.error);try{fn(t)}catch(e){t.abort();no(e)}})}
@@ -189,16 +192,33 @@ async function syncSlots(from=today()){
 const activeRestrictions=()=>data.restrictions.filter(r=>r.start<=today()&&r.end>=today());
 const restrictionOf=id=>activeRestrictions().find(r=>r.student===id);
 const pendingCalls=()=>data.sessions.filter(s=>active(s)&&isStarted(s)&&!isCalled(s)&&pupilsOf(s.classId).length).sort((a,b)=>byDate(b,a));
+// Alertes « À surveiller » : règles paramétrables dans Réglages › Paramètres.
+const alertRules=[
+ {key:'abs',label:'absences',one:'absence',statuses:['Absent']},
+ {key:'late',label:'retards',one:'retard',statuses:['Retard']},
+ {key:'kit',label:'oublis de tenue ou de chaussures',one:'oubli de tenue ou de chaussures',statuses:['Oubli de tenue','Oubli de chaussures']},
+ {key:'med',label:'certificats médicaux',one:'certificat médical',statuses:['Certificat médical']}
+];
+const defaultSettings={id:'app',absOn:'1',absMin:'3',absWindow:'4',lateOn:'0',lateMin:'3',lateWindow:'8',kitOn:'1',kitMin:'3',kitWindow:'8',medOn:'0',medMin:'2',medWindow:'cycle'};
+const settings=()=>({...defaultSettings,...data.settings.find(r=>r.id==='app')});
+const calledSessions=classId=>data.sessions.filter(s=>s.classId===classId&&active(s)&&isStarted(s)&&isCalled(s));
+const statusIn=(s,p)=>data.attendance.find(a=>a.id===s.id+'/'+p.id)?.status||'Présent';
+// Séances prises en compte par une fenêtre : N dernières, cycle en cours ou année scolaire.
+function windowSessions(classId,win){
+ const list=calledSessions(classId).sort((a,b)=>byDate(b,a)),t=today();
+ if(win==='cycle'){const c=currentCycle(classId);return c&&c.start<=t?{list:list.filter(s=>s.date>=c.start&&s.date<=c.end),text:'depuis le début du cycle '+c.name}:{list:[],text:''}}
+ if(win==='year'){const y=yearOf(t);return {list:y?list.filter(s=>s.date>=y.start):list,text:'depuis le début de l’année'}}
+ const n=Number(win)||4,l=list.slice(0,n);return {list:l,text:'sur les '+l.length+' dernières séances'};
+}
 function watchList(){
- const out=[];
+ const out=[],cfg=settings();
  for(const c of data.classes){
-  const last=data.sessions.filter(s=>s.classId===c.id&&active(s)&&isStarted(s)&&isCalled(s)).sort((a,b)=>byDate(b,a));
-  for(const p of pupilsOf(c.id)){
-   const st=s=>data.attendance.find(a=>a.id===s.id+'/'+p.id)?.status;
-   const abs=last.slice(0,4).filter(s=>st(s)==='Absent').length;
-   if(abs>=3)out.push({p,text:abs+' absences sur les 4 dernières séances'});
-   const kit=last.slice(0,8).filter(s=>['Oubli de tenue','Oubli de chaussures'].includes(st(s))).length;
-   if(kit>=3)out.push({p,text:kit+' oublis de tenue ou de chaussures sur les 8 dernières séances'});
+  const wins={};
+  for(const r of alertRules)if(cfg[r.key+'On']==='1')wins[r.key]=windowSessions(c.id,cfg[r.key+'Window']);
+  for(const p of pupilsOf(c.id))for(const r of alertRules){
+   const w=wins[r.key];if(!w)continue;
+   const n=w.list.filter(s=>r.statuses.includes(statusIn(s,p))).length;
+   if(n>=Number(cfg[r.key+'Min']))out.push({p,text:plural(n,r.one,r.label)+' '+w.text});
   }
  }
  return out;
@@ -222,7 +242,7 @@ document.querySelector('.version').textContent='Version '+APP_VERSION;
 let sessionId='',classFilter='',period='upcoming',calWeek='',editing={};
 const collectionsOf=k=>k==='planning'?['timetable','holidays']:[k];
 function render(){
- let k=location.hash.slice(1);if(!(k in pages))k='home';current=k;
+ let [k,param]=location.hash.slice(1).split('=');if(!(k in pages))k='home';current=k==='student'?'students':k;
  if(editing.k&&!collectionsOf(k).includes(editing.k))editing={};
  buildNav();
  view.replaceChildren();
@@ -230,7 +250,7 @@ function render(){
  if(q){document.querySelector('h1').textContent='Recherche';return renderSearch(q)}
  document.querySelector('h1').textContent=pages[k];
  document.title=pages[k]+' · EPS Manager';
- ({home:renderHome,calendar:renderCalendar,planning:renderPlanning,attendance:renderAttendance,backup:renderBackup}[k]||renderList)(k);
+ ({home:renderHome,calendar:renderCalendar,planning:renderPlanning,attendance:renderAttendance,backup:renderBackup,absences:renderAbsences,settings:renderSettings,student:()=>renderStudent(decodeURIComponent(param||''))}[k]||renderList)(k);
 }
 
 // ---------- Tableau de bord ----------
@@ -310,7 +330,7 @@ function renderHome(){
   }
  }
 }
-function alertRow(parent,student,text,href){const r=el('div','',parent,'row');avatar(student,r);const b=el('div','',r,'body');el('span',label(student)+' · '+ref('classes',student.classId),b,'title');el('span',text,b,'meta');link(r,href,'Voir','btn small').onclick=()=>{classFilter=student.classId}}
+function alertRow(parent,student,text,href){const r=el('div','',parent,'row');avatar(student,r);const b=el('div','',r,'body');el('span',label(student)+' · '+ref('classes',student.classId),b,'title');el('span',text,b,'meta');link(r,'student='+student.id,'Voir la fiche','btn small')}
 
 // ---------- Calendrier (vue semaine) ----------
 function renderCalendar(){
@@ -463,6 +483,7 @@ function renderAttendance(){
 function pupilSheet(p,session,current){
  const d=sheet(label(p));
  const r=restrictionOf(p.id);if(r)el('p','Inaptitude jusqu’au '+fmtDate(r.end)+' · '+r.name,d,'notice');
+ link(d,'student='+p.id,'Ouvrir la fiche de l’élève →','link').onclick=()=>d.close();
  const grid=el('div','',d,'status-grid');
  for(const st of statuses){
   const b=button('',grid,'status-btn');b.setAttribute('aria-pressed',st===current);
@@ -489,7 +510,7 @@ function renderBackup(){
  input.onchange=async()=>{try{
   const b=JSON.parse(await input.files[0].text());
   if(![1,2].includes(b.version)||!b.data||typeof b.data!=='object')throw Error();
-  for(const key of ['holidays','timetable'])b.data[key]??=[];
+  for(const key of ['holidays','timetable','settings'])b.data[key]??=[];
   if(!stores.every(key=>Array.isArray(b.data[key])&&b.data[key].every(r=>r&&typeof r.id==='string'&&Object.values(r).every(v=>typeof v==='string'))))throw Error();
   if(!confirm('Remplacer toutes les données locales par cette sauvegarde ?'))return;
   await transaction(stores,t=>{for(const key of stores){const st=t.objectStore(key);st.clear();b.data[key].forEach(r=>st.add(r))}});await load();await migrateAttendance();render();notify('Sauvegarde restaurée.');
@@ -521,9 +542,9 @@ async function loadSample(){
   ['ex-4A','Handball','2026-09-01','2026-10-16'],['ex-4A','Natation','2026-11-02','2026-12-18'],['ex-4A','Danse','2027-01-04','2027-02-12'],['ex-4A','Volley-ball','2027-03-01','2027-04-09'],['ex-4A','Athlétisme','2027-04-26','2027-06-12']].map(([classId,name,start,end],i)=>({id:'ex-cy'+i,classId,name,start,end}));
  const t=today();
  const restrictions=[{id:'ex-r1',student:'ex-st1',start:addDays(t,-3),end:addDays(t,10),name:'Entorse cheville : pas de course ni de saut. Arbitrage, observation.'},{id:'ex-r2',student:'ex-st30',start:addDays(t,-40),end:addDays(t,-20),name:'Fracture du poignet : pas d’appui sur le bras gauche.'}];
- const grades=[];students.forEach((s,i)=>{grades.push({id:'ex-g'+i,student:s.id,name:s.classId==='ex-5B'?'Demi-fond · 3×500 m':'Handball · match',grade:String(Math.round((8+rnd()*11)*2)/2)})});
- const observations=[['ex-st0','Très bonne gestion de l’effort, conseille ses camarades.'],['ex-st3','Manque d’engagement en fin de séance, à encourager.'],['ex-st5','Progrès nets sur le service long au badminton.'],['ex-st26','Excellente coordination en natation, peut viser le niveau 3.'],['ex-st31','Refuse de passer dans l’eau, à voir avec la famille.']].map(([student,name],i)=>({id:'ex-ob'+i,student,name}));
- const comments=[['ex-st0','Élève moteur et respectueux. Très bon trimestre.'],['ex-st7','Des efforts, mais des oublis de tenue trop fréquents.'],['ex-st24','Investie et volontaire, de beaux progrès.']].map(([student,name],i)=>({id:'ex-co'+i,student,name}));
+ const grades=[];students.forEach((s,i)=>{grades.push({id:'ex-g'+i,student:s.id,name:s.classId==='ex-5B'?'Demi-fond · 3×500 m':'Handball · match',grade:String(Math.round((8+rnd()*11)*2)/2),date:'2026-10-13'})});
+ const observations=[['ex-st0','Très bonne gestion de l’effort, conseille ses camarades.'],['ex-st3','Manque d’engagement en fin de séance, à encourager.'],['ex-st5','Progrès nets sur le service long au badminton.'],['ex-st26','Excellente coordination en natation, peut viser le niveau 3.'],['ex-st31','Refuse de passer dans l’eau, à voir avec la famille.']].map(([student,name],i)=>({id:'ex-ob'+i,student,name,date:addDays(t,-3-i*6)}));
+ const comments=[['ex-st0','Élève moteur et respectueux. Très bon trimestre.'],['ex-st7','Des efforts, mais des oublis de tenue trop fréquents.'],['ex-st24','Investie et volontaire, de beaux progrès.']].map(([student,name],i)=>({id:'ex-co'+i,student,name,date:'2026-12-10'}));
  await transaction(stores,tx=>{
   for(const k of stores)tx.objectStore(k).clear();
   const put=(k,rows)=>rows.forEach(r=>tx.objectStore(k).put(r));
@@ -602,6 +623,7 @@ function renderCollection(k,parent){
   if(row.end&&row.end<row.start){notify('La fin doit suivre le début.');return}
   const rec={...old,...row,id:old?.id||crypto.randomUUID()};
   if(k==='cycles')delete rec.goal;
+  if(['grades','comments','observations'].includes(k)&&!rec.date)rec.date=today();
   if(k==='sessions'&&old?.slot)rec.custom='1';
   editing={};
   await transaction(k,t=>t.objectStore(k).put(rec));await load();
@@ -652,13 +674,13 @@ function renderItem(k,row,list){
   cycles:[ref('classes',row.classId)+' · '+row.name,row.start?fmtDate(row.start,{day:'numeric',month:'short'})+' → '+fmtDate(row.end,{day:'numeric',month:'short'})+' · '+plural(cyc.length,'séance')+(cyc.length?' ('+cyc.filter(isStarted).length+' faites)':''):'Dates à définir : modifiez le cycle'],
   sessions:[sessionTitle(row),[fmtDate(row.date),timeRange(row),cycleText(row)].filter(Boolean).join(' · ')],
   restrictions:[label(student),fmtDate(row.start)+' → '+fmtDate(row.end)+' · '+row.name],
-  grades:[label(student),row.name+' · '+ref('classes',student?.classId)],
-  comments:[label(student),row.name],
-  observations:[label(student),row.name],
+  grades:[label(student),[row.date&&fmtDate(row.date),row.name,ref('classes',student?.classId)].filter(Boolean).join(' · ')],
+  comments:[label(student),[row.date&&fmtDate(row.date),row.name].filter(Boolean).join(' · ')],
+  observations:[label(student),[row.date&&fmtDate(row.date),row.name].filter(Boolean).join(' · ')],
   timetable:[enumLabel('weekday',row.weekday)+' · '+timeRange(row),ref('classes',row.classId)+' · '+row.name+' · '+enumLabel('duration',row.duration)],
   holidays:[row.name,(row.start===row.end?fmtDate(row.start,{weekday:'long',day:'numeric',month:'long',year:'numeric'}):fmtDate(row.start,{day:'numeric',month:'short'})+' → '+fmtDate(row.end,{day:'numeric',month:'short',year:'numeric'})+' · '+plural(days(row),'jour'))]
  }[k];
- el('span',parts[0]||'Élément supprimé',b,'title');el('span',parts[1],b,'meta');
+ if(student)link(b,'student='+student.id,parts[0]||'Élément supprimé','title');else el('span',parts[0]||'Élément supprimé',b,'title');el('span',parts[1],b,'meta');
  if(k==='grades'){const g=el('span',String(row.grade).replace('.',','),item,'grade');el('small',' /20',g)}
  if(k==='timetable')el('span',row.freq==='all'?'Chaque semaine':enumLabel('freq',row.freq),b,'tag'+(row.freq==='all'?'':' now'));
  if((k==='holidays'||k==='restrictions'||k==='cycles')&&row.start<=t&&row.end>=t)el('span','En cours',b,'tag '+(k==='cycles'?'now':'warn'));
@@ -702,6 +724,191 @@ async function remove(k,id){
  return true;
 }
 
+// ---------- Paramètres de l'application ----------
+function renderSettings(){
+ const cfg=settings();
+ const p=panel(view,'Alertes « À surveiller »');
+ el('p','Choisissez quand un élève apparaît dans le bloc « À surveiller » du tableau de bord.',p,'muted');
+ const windows=[['4','4 dernières séances'],['6','6 dernières séances'],['8','8 dernières séances'],['10','10 dernières séances'],['12','12 dernières séances'],['cycle','le cycle en cours'],['year','l’année scolaire']];
+ const save=async(changes)=>{await transaction('settings',t=>t.objectStore('settings').put({...settings(),...changes}));await load();render();notify('Paramètres enregistrés.')};
+ for(const r of alertRules){
+  const row=el('div','',p,'rule'+(cfg[r.key+'On']==='1'?'':' off'));
+  const on=el('label','',row,'check');const cb=el('input','',on);cb.type='checkbox';cb.checked=cfg[r.key+'On']==='1';on.append('Signaler les '+r.label);
+  cb.onchange=()=>save({[r.key+'On']:cb.checked?'1':'0'});
+  const f=el('div','',row,'rule-fields');
+  const min=select(el('label','À partir de',f),[...Array(10)].map((_,i)=>[String(i+1),plural(i+1,r.one,r.label)]));min.value=cfg[r.key+'Min'];min.disabled=!cb.checked;
+  min.onchange=()=>save({[r.key+'Min']:min.value});
+  const win=select(el('label','Sur',f),windows);win.value=cfg[r.key+'Window'];win.disabled=!cb.checked;
+  win.onchange=()=>save({[r.key+'Window']:win.value});
+ }
+ const n=watchList();
+ el('p',n.length?'Avec ces réglages : '+plural(n.length,'alerte')+' en ce moment.':'Avec ces réglages : aucune alerte en ce moment.',p,'hint');
+ const b=el('div','',p,'actions');button('Rétablir les réglages par défaut',b).onclick=()=>save(defaultSettings);
+}
+
+// ---------- Suivi des absences ----------
+let absClass='',absPeriod='year',absView='summary';
+function periodSessions(classId,period){
+ const t=today();let list=calledSessions(classId);
+ if(period==='year'){const y=yearOf(t);if(y)list=list.filter(s=>s.date>=y.start&&s.date<=y.end)}
+ else if(period==='cycle'){const c=currentCycle(classId);list=c&&c.start<=t?list.filter(s=>s.date>=c.start&&s.date<=c.end):[]}
+ else{const c=find('cycles',period);list=c?list.filter(s=>s.date>=c.start&&s.date<=c.end):[]}
+ return list.sort(byDate);
+}
+function studentStats(p,list){
+ const out={sessions:list.length};for(const st of statuses)out[st]=0;
+ for(const s of list)out[statusIn(s,p)]++;
+ out.rate=list.length?Math.round((list.length-out['Absent'])/list.length*100):null;
+ return out;
+}
+const mentionCols=statuses.filter(s=>s!=='Présent');
+function statusDot(st,parent){const d=el('span',statusInfo[st].k,parent,'dot');d.style.background=statusInfo[st].bg;d.style.color=statusInfo[st].fg;d.title=st;return d}
+function renderAbsences(){
+ if(!data.classes.length){el('p','Aucune classe pour le moment.',view,'empty');return}
+ if(absClass&&!find('classes',absClass))absClass='';
+ const f=el('div','',view,'filters panel');
+ const cs=select(el('label','Classe',f),data.classes.map(c=>[c.id,c.name]),'Toutes les classes');cs.value=absClass;
+ cs.onchange=()=>{absClass=cs.value;if(!['year','cycle'].includes(absPeriod))absPeriod='cycle';render()};
+ const opts=[['year','Depuis le début de l’année'],['cycle','Cycle en cours']];
+ if(absClass)for(const c of data.cycles.filter(c=>c.classId===absClass&&c.start).sort(byDate))opts.push([c.id,'Cycle · '+c.name+' ('+fmtDate(c.start,{day:'numeric',month:'short'})+' → '+fmtDate(c.end,{day:'numeric',month:'short'})+')']);
+ const ps=select(el('label','Période',f),opts);if(!opts.some(o=>o[0]===absPeriod))absPeriod='year';ps.value=absPeriod;ps.onchange=()=>{absPeriod=ps.value;render()};
+ const seg=el('div','',f,'segmented');seg.setAttribute('role','group');seg.setAttribute('aria-label','Affichage');
+ for(const [v,t] of [['summary','Synthèse'],['grid','Détail par séance']]){const b=button(t,seg);b.setAttribute('aria-pressed',absView===v);b.onclick=()=>{absView=v;render()}}
+
+ const classes=absClass?[find('classes',absClass)]:data.classes;
+ const rows=[];let total={sessions:0};for(const st of statuses)total[st]=0;
+ for(const c of classes){const list=periodSessions(c.id,absPeriod);for(const p of pupilsOf(c.id)){const st=studentStats(p,list);rows.push({p,c,st,list});for(const k of statuses)total[k]+=st[k];total.sessions+=st.sessions}}
+ const kpis=el('div','',view,'kpis');
+ const kpi=(t,v,sub)=>{const a=el('div','',kpis,'kpi');el('span',t,a);el('b',v,a);el('small',sub,a)};
+ kpi('Absences',total['Absent'],'sur '+plural(total.sessions,'présence attendue','présences attendues'));
+ kpi('Taux de présence',total.sessions?Math.round((total.sessions-total['Absent'])/total.sessions*100)+' %':'—',absPeriod==='year'?'Année scolaire':'Période choisie');
+ kpi('Retards',total['Retard'],'');
+ kpi('Oublis de tenue / chaussures',total['Oubli de tenue']+total['Oubli de chaussures'],'');
+ if(!total.sessions){el('p','Aucun appel enregistré sur cette période.',view,'empty');return}
+
+ if(absView==='grid'){
+  if(!absClass){el('p','Choisissez une classe pour voir le détail séance par séance.',view,'empty');return}
+  const list=rows[0]?.list||[];
+  const box=el('div','',view,'table-box');const tb=el('table','',box,'matrix');
+  const hr=el('tr','',el('thead','',tb));el('th','Élève',hr,'sticky');
+  for(const s of list){const th=el('th','',hr);el('span',fmtDate(s.date,{day:'numeric',month:'numeric'}),th);th.title=longDate(s.date)+' · '+(cycleOf(s)?.name||s.name)}
+  el('th','Abs.',hr);
+  const body=el('tbody','',tb);
+  for(const {p,st} of rows){
+   const tr=el('tr','',body);const th=el('th','',tr,'sticky');link(th,'student='+p.id,label(p));
+   for(const s of list){const td=el('td','',tr);const x=statusIn(s,p);if(x!=='Présent')statusDot(x,td);else td.textContent='·'}
+   el('td',st['Absent']||'',tr,'num');
+  }
+  const lg=el('div','',view,'legend');for(const st of mentionCols){const sp=el('span','',lg);statusDot(st,sp);sp.append(st)}
+  return;
+ }
+ rows.sort((a,b)=>b.st['Absent']-a.st['Absent']||(a.p.last+a.p.first).localeCompare(b.p.last+b.p.first,'fr'));
+ const tools=el('div','',view,'actions');
+ button('Exporter en CSV',tools,'small').onclick=()=>{
+  const head=['Nom','Prénom','Classe','Séances',...mentionCols,'Présence %'];
+  const csv=[head,...rows.map(({p,c,st})=>[p.last,p.first,c.name,st.sessions,...mentionCols.map(k=>st[k]),st.rate??''])].map(r=>r.map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(';')).join('\n');
+  const a=document.createElement('a');a.href=URL.createObjectURL(new Blob(['﻿'+csv],{type:'text/csv'}));a.download='absences-'+today()+'.csv';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+ };
+ const box=el('div','',view,'table-box');const tb=el('table','',box,'stats');
+ const hr=el('tr','',el('thead','',tb));el('th','Élève',hr);if(!absClass)el('th','Classe',hr);el('th','Séances',hr,'num');
+ for(const st of mentionCols){const th=el('th','',hr,'num');statusDot(st,th);th.setAttribute('aria-label',st)}
+ el('th','Présence',hr,'num');
+ const body=el('tbody','',tb);
+ for(const {p,c,st} of rows){
+  const tr=el('tr','',body,st['Absent']?'has-abs':'');
+  const th=el('th','',tr);const a=link(th,'student='+p.id,'','who');avatar(p,a,'sm');a.append(label(p));
+  if(!absClass)el('td',c.name,tr);el('td',st.sessions,tr,'num');
+  for(const k of mentionCols)el('td',st[k]||'',tr,'num'+(st[k]?' strong':''));
+  el('td',st.rate==null?'—':st.rate+' %',tr,'num');
+ }
+}
+
+// ---------- Fiche élève ----------
+function renderStudent(id){
+ const p=find('students',id);
+ if(!p){el('p','Élève introuvable.',view,'empty');link(view,'students','← Retour aux élèves','link');return}
+ document.querySelector('h1').textContent=label(p);document.title=label(p)+' · EPS Manager';
+ const c=find('classes',p.classId),t=today(),y=yearOf(t);
+ const yearList=periodSessions(p.classId,'year'),st=studentStats(p,yearList);
+ const grades=data.grades.filter(g=>g.student===id).sort(byDate);
+ const avg=grades.length?(grades.reduce((n,g)=>n+Number(g.grade),0)/grades.length):null;
+
+ const head=el('section','',view,'panel profile-head');
+ avatar(p,head,'xl');
+ const info=el('div','',head,'body');
+ el('h2',label(p),info);
+ el('span',(c?c.name:'Sans classe')+(y?' · '+y.name:''),info,'muted');
+ const r=restrictionOf(id);if(r)el('span','Inaptitude jusqu’au '+fmtDate(r.end)+' · '+r.name,info,'tag warn');
+ const ha=el('div','',head,'actions');
+ button('Modifier',ha).onclick=()=>{editing={k:'students',id};location.hash='#students'};
+ link(ha,'students','← Tous les élèves','btn small');
+
+ const kpis=el('div','',view,'kpis');
+ const kpi=(t,v,sub,alert)=>{const a=el('div','',kpis,'kpi'+(alert?' alert':''));el('span',t,a);el('b',v,a);el('small',sub,a)};
+ kpi('Présence (année)',st.rate==null?'—':st.rate+' %',plural(st.sessions,'séance')+' avec appel');
+ kpi('Absences',st['Absent'],'depuis le début de l’année',st['Absent']>=3);
+ kpi('Retards',st['Retard'],'');
+ kpi('Oublis',st['Oubli de tenue']+st['Oubli de chaussures'],st['Oubli de tenue']+' tenue · '+st['Oubli de chaussures']+' chaussures',st['Oubli de tenue']+st['Oubli de chaussures']>=3);
+ kpi('Moyenne',avg==null?'—':avg.toFixed(1).replace('.',','),plural(grades.length,'note'));
+
+ // Assiduité par cycle
+ const pa=panel(view,'Assiduité');
+ const cycles=data.cycles.filter(x=>x.classId===p.classId&&x.start&&x.start<=t).sort(byDate);
+ if(!yearList.length)el('p','Aucun appel enregistré cette année.',pa,'empty');
+ else{
+  const box=el('div','',pa,'table-box flat');const tb=el('table','',box,'stats');
+  const hr=el('tr','',el('thead','',tb));el('th','Période',hr);el('th','Séances',hr,'num');for(const k of mentionCols){const th=el('th','',hr,'num');statusDot(k,th)}
+  const body=el('tbody','',tb);
+  const line=(name,list,cls)=>{const s2=studentStats(p,list);const tr=el('tr','',body,cls||'');el('th',name,tr);el('td',s2.sessions,tr,'num');for(const k of mentionCols)el('td',s2[k]||'',tr,'num'+(s2[k]?' strong':''))};
+  for(const cy of cycles)line(cy.name+' · '+fmtDate(cy.start,{day:'numeric',month:'short'})+' → '+fmtDate(cy.end,{day:'numeric',month:'short'}),periodSessions(p.classId,cy.id));
+  line('Année scolaire',yearList,'total');
+  // Frise de toutes les séances
+  el('h3','Toutes les séances',pa);
+  const strip=el('div','',pa,'strip');
+  for(const s of yearList){const x=statusIn(s,p);const sq=el('span',x==='Présent'?'':statusInfo[x].k,strip,'sq'+(x==='Présent'?' ok':''));if(x!=='Présent'){sq.style.background=statusInfo[x].bg;sq.style.color=statusInfo[x].fg}sq.title=longDate(s.date)+' · '+(cycleOf(s)?.name||s.name)+' · '+x}
+  const ments=yearList.filter(s=>statusIn(s,p)!=='Présent').sort((a,b)=>byDate(b,a));
+  el('h3','Mentions · '+ments.length,pa);
+  if(!ments.length)el('p','Aucune absence, aucun retard ni oubli cette année.',pa,'muted');
+  const ml=el('div','',pa,'mentions');
+  for(const s of ments){const x=statusIn(s,p);const row=link(ml,'attendance','','row');row.onclick=()=>{sessionId=s.id};statusDot(x,row);const b=el('div','',row,'body');el('span',x,b,'title');el('span',longDate(s.date)+(s.time?' · '+hh(s.time):'')+(cycleOf(s)?' · '+cycleOf(s).name:''),b,'meta')}
+ }
+
+ const grid=el('div','',view,'grid');
+ historyPanel(grid,'restrictions','Inaptitudes',id,x=>[fmtDate(x.start)+' → '+fmtDate(x.end),x.name,x.start<=t&&x.end>=t?'En cours':'']);
+ historyPanel(grid,'grades','Évaluations',id,x=>[x.name,(x.date?fmtDate(x.date):''),'',String(x.grade).replace('.',',')+' /20']);
+ historyPanel(grid,'observations','Observations',id,x=>[x.name,x.date?fmtDate(x.date):'']);
+ historyPanel(grid,'comments','Appréciations',id,x=>[x.name,x.date?fmtDate(x.date):'']);
+}
+function historyPanel(parent,k,title,studentId,fmt){
+ const rows=data[k].filter(x=>x.student===studentId).sort((a,b)=>byDate(b,a));
+ const p=panel(parent,title+' · '+rows.length);
+ button('+ Ajouter',p.querySelector('.panel-head'),'small').onclick=()=>quickAdd(k,studentId);
+ if(!rows.length)el('p','Rien pour le moment.',p,'muted');
+ for(const x of rows){
+  const [main,meta,tag,big]=fmt(x);
+  const r=el('div','',p,'row hist');const b=el('div','',r,'body');el('span',main,b,'title');if(meta)el('span',meta,b,'meta');
+  if(tag)el('span',tag,r,'tag warn');if(big)el('span',big,r,'grade');
+  iconButton('trash','Supprimer',r,'danger').onclick=()=>remove(k,x.id);
+ }
+}
+function quickAdd(k,studentId){
+ const titles={restrictions:'Nouvelle inaptitude',grades:'Nouvelle note',observations:'Nouvelle observation',comments:'Nouvelle appréciation'};
+ const d=sheet(titles[k]);el('p',ref('students',studentId),d,'muted');
+ const form=el('form','',d,'add');
+ for(const [key,title,type] of fields[k].filter(f=>f[2]!=='students')){
+  const l=el('label',title,form);
+  const input=key==='name'&&(k==='observations'||k==='comments'||k==='restrictions')?el('textarea','',l):el('input','',l);
+  if(input.tagName==='INPUT'){input.type=type||'text';if(type==='number'){input.min=0;input.max=20;input.step='any';input.inputMode='decimal'}if(type==='date'&&key==='start')input.value=today()}
+  else input.rows=3;
+  input.name=key;input.required=true;
+ }
+ el('button','Enregistrer',el('div','',form,'form-actions'),'primary');
+ form.onsubmit=async e=>{e.preventDefault();const row=Object.fromEntries(new FormData(form));if(row.end&&row.end<row.start){notify('La fin doit suivre le début.');return}
+  const rec={...row,student:studentId,id:crypto.randomUUID()};if(k!=='restrictions')rec.date=today();
+  await transaction(k,t=>t.objectStore(k).put(rec));await load();d.close();render();notify('Enregistré.')};
+ d.showModal();form.querySelector('input,textarea')?.focus();
+}
+
 // ---------- Recherche ----------
 function renderSearch(q){
  const norm=s=>(s||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase();
@@ -713,7 +920,7 @@ function renderSearch(q){
  el('p',plural(hits.length,'résultat')+' pour « '+q+' »',view,'muted');
  const list=el('div','',view,'list');
  for(const [k,row,title,meta] of hits.slice(0,60)){
-  const a=link(list,k==='sessions'?'attendance':k,'','item');
+  const a=link(list,k==='sessions'?'attendance':k==='students'?'student='+row.id:k,'','item');
   a.onclick=()=>{search.value='';if(k==='sessions')sessionId=row.id;else if(row.classId||k==='classes')classFilter=k==='classes'?row.id:row.classId;if(location.hash===a.hash)queueMicrotask(render)};
   if(k==='students')avatar(row,a);else icon(k,el('span','',a,'avatar'));
   const b=el('div','',a,'body');el('span',title,b,'title');el('span',pages[k]+' · '+meta,b,'meta');

@@ -220,6 +220,57 @@ dialog.sheet .actions{margin-top:10px}
 .text-btn{border:0;background:none;color:var(--danger);font-size:14px;min-height:44px;padding:0;justify-content:flex-start;text-decoration:underline}
 dialog.sheet{width:min(560px,calc(100% - 32px));max-height:calc(100% - 32px);overflow:auto}
 
+
+/* ---------- Paramètres ---------- */
+.rule{display:flex;flex-wrap:wrap;gap:12px 24px;align-items:end;padding:14px 0;border-top:1px solid var(--line-soft)}
+.rule>label.check{flex-direction:row;align-items:center;gap:10px;font-size:16px;color:var(--ink);min-width:260px;min-height:48px}
+.rule-fields{display:flex;flex-wrap:wrap;gap:12px;flex:1}
+.rule-fields label{min-width:200px;flex:1}
+.rule.off .rule-fields{opacity:.5}
+textarea{padding:10px 12px;min-height:90px;resize:vertical}
+
+/* ---------- Absences ---------- */
+.filters.panel{flex-direction:row;align-items:end}
+.segmented{display:flex;border:1px solid var(--line);border-radius:14px;overflow:hidden;background:var(--surface)}
+.segmented button{border:0;border-radius:0;min-height:46px;color:var(--muted);font-weight:600}
+.segmented button[aria-pressed=true]{background:var(--primary);color:#fff}
+.table-box{overflow:auto;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);max-height:70vh}
+.table-box.flat{border:0;border-radius:0;max-height:none}
+table{border-collapse:collapse;width:100%;font-size:14px}
+th,td{padding:10px 12px;border-bottom:1px solid var(--line-soft);text-align:left;white-space:nowrap}
+thead th{position:sticky;top:0;background:var(--surface);z-index:1;font-size:12px;color:var(--muted);font-weight:700}
+tbody th{font-weight:600}
+.num{text-align:center}
+td.strong{font-weight:800}
+tr.has-abs th{color:var(--danger)}
+tr.total th,tr.total td{font-weight:800;background:#f4f6f1}
+.who{display:flex;align-items:center;gap:10px;color:inherit;text-decoration:none;min-height:36px}
+.avatar.sm{width:32px;height:32px;font-size:12px}
+.matrix th,.matrix td{padding:6px 5px;text-align:center}
+.matrix thead th span{writing-mode:vertical-rl;transform:rotate(180deg);font-size:11px}
+.matrix .sticky{position:sticky;left:0;background:var(--surface);text-align:left;z-index:2;padding-left:12px}
+.matrix thead .sticky{z-index:3}
+.matrix td{color:#b9c6b7}
+.matrix .dot,.stats .dot{width:24px;height:24px;font-size:10px}
+
+/* ---------- Fiche élève ---------- */
+.profile-head{flex-direction:row;flex-wrap:wrap;align-items:center;gap:18px}
+.profile-head .body{display:flex;flex-direction:column;gap:6px;flex:1;min-width:200px}
+.profile-head h2{font-size:26px}
+.profile-head .tag{align-self:flex-start;white-space:normal}
+.avatar.xl{width:88px;height:88px;font-size:30px}
+.panel h3{margin:8px 0 0;font-size:15px;color:var(--muted)}
+.strip{display:flex;flex-wrap:wrap;gap:5px}
+.sq{width:30px;height:30px;border-radius:8px;display:grid;place-items:center;font-size:10px;font-weight:800}
+.sq.ok{background:#d8edb0}
+.mentions{display:grid;gap:6px;grid-template-columns:repeat(auto-fill,minmax(min(280px,100%),1fr))}
+.mentions .row{border:1px solid var(--line-soft);min-height:52px}
+.mentions .dot{width:30px;height:30px;font-size:11px;flex:none}
+.row.hist{border:1px solid var(--line-soft)}
+.row .grade{font-size:18px;font-weight:750}
+.item a.title{color:inherit;text-decoration:none}
+.item a.title:hover{text-decoration:underline}
+
 /* ---------- Tablette portrait ---------- */
 @media (max-width:1023px){
   .sidebar{width:212px;padding-inline:10px}
@@ -239,3 +290,4 @@ dialog.sheet{width:min(560px,calc(100% - 32px));max-height:calc(100% - 32px);ove
   main{padding:18px 16px 48px}
   .actions,.search{width:100%}
 }
+.matrix td.num{color:var(--ink);font-weight:800}
