@@ -4,10 +4,12 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Poules torunante VB</title>
-    <!-- Tailwind CSS : feuille générée en local (fonctionne hors connexion), voir README-EPS.md -->
+    <!-- Tailwind CSS : feuille générée en local (hors connexion), voir README-EPS.md -->
     <link rel="stylesheet" href="tailwind.css">
-    <!-- Kit EPS Manager (inactif hors d'EPS Manager) -->
-    <script src="eps-sdk.js"></script>
+    <!-- Génération de QR codes (affichage) -->
+    <script src="vendor/qrcode.js"></script>
+    <!-- Lecture de QR codes via la caméra -->
+    <script src="vendor/html5-qrcode.min.js"></script>
     <style>
         /* Police de base */
         body {
@@ -114,12 +116,42 @@
             </div>
         </div>
 
+        <!-- ÉCRAN 0 : CHOIX DU RÔLE -->
+        <div id="screen-role" class="screen active bg-white p-6 md:p-8 rounded-2xl shadow-lg text-center">
+            <h1 class="text-3xl font-bold text-indigo-700 mb-2">Poules tournantes VB</h1>
+            <p class="text-slate-500 mb-8">Qui utilise cette tablette ?</p>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-xl mx-auto">
+                <button id="role-teacher-button" class="flex flex-col items-center gap-3 p-6 rounded-2xl border-2 border-slate-200 hover:border-indigo-400 hover:bg-indigo-50 transition-colors">
+                    <span class="text-4xl">👩‍🏫</span>
+                    <span class="text-lg font-semibold text-slate-800">Je suis l'enseignant(e)</span>
+                    <span class="text-sm text-slate-500">Créer les poules et récupérer les résultats</span>
+                </button>
+                <button id="role-student-button" class="flex flex-col items-center gap-3 p-6 rounded-2xl border-2 border-slate-200 hover:border-indigo-400 hover:bg-indigo-50 transition-colors">
+                    <span class="text-4xl">🏐</span>
+                    <span class="text-lg font-semibold text-slate-800">Je suis un(e) élève</span>
+                    <span class="text-sm text-slate-500">Rejoindre ma poule et jouer mes matchs</span>
+                </button>
+            </div>
+        </div>
+
         <!-- ÉCRAN 1: CONFIGURATION -->
-        <div id="screen-setup" class="screen active bg-white p-6 md:p-8 rounded-2xl shadow-lg">
+        <div id="screen-setup" class="screen bg-white p-6 md:p-8 rounded-2xl shadow-lg">
             <h1 class="flex items-center justify-center text-3xl font-bold text-center text-indigo-700 mb-8">
                 <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mr-3"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>
                 Configuration du Tournoi
             </h1>
+
+            <!-- Rejoindre une poule via QR code -->
+            <div class="mb-8 p-5 bg-indigo-50 rounded-xl text-center">
+                <p class="text-slate-700 font-medium mb-3">Scanne le QR code donné par ton enseignant(e) pour rejoindre ta poule.</p>
+                <button id="scan-pool-qr-button" class="w-full md:w-auto mx-auto flex items-center justify-center gap-2 text-white font-semibold py-3 px-6 rounded-lg shadow-md transition-all duration-300 bg-gradient-to-r from-indigo-600 to-blue-500 hover:from-indigo-700 hover:to-blue-600">
+                    📷 Scanner le QR de ma poule
+                </button>
+            </div>
+
+            <details class="mb-2">
+                <summary class="cursor-pointer text-sm font-medium text-slate-500 hover:text-indigo-600">⚙️ Configuration manuelle (sans QR)</summary>
+                <div class="mt-4">
 
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
                 <!-- Choix du nombre de joueurs -->
@@ -178,11 +210,15 @@
             <div id="setup-error" class="text-red-600 text-center font-medium mb-4 h-5"></div>
             
             <button id="start-button" class="w-full text-white text-xl font-semibold py-4 px-6 rounded-lg shadow-md transition-all duration-300
-                            bg-gradient-to-r from-indigo-600 to-blue-500 hover:from-indigo-700 hover:to-blue-600 
+                            bg-gradient-to-r from-indigo-600 to-blue-500 hover:from-indigo-700 hover:to-blue-600
                             focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 flex items-center justify-center gap-3">
                 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
                 Commencer le tournoi
             </button>
+                </div>
+            </details>
+
+            <button id="setup-change-role-button" class="block mx-auto mt-6 text-xs text-slate-400 hover:text-slate-600 underline">Changer de rôle</button>
         </div>
 
         <!-- ÉCRAN 2: TABLEAU DE BORD PRINCIPAL -->
@@ -193,6 +229,7 @@
             </h1>
             
             <div id="generation-info" class="bg-indigo-50 text-indigo-700 p-4 rounded-lg text-center font-medium text-sm mb-8"></div>
+            <p id="teacher-manual-banner" class="hidden bg-amber-50 text-amber-700 border border-amber-200 rounded-lg p-3 text-center text-sm font-medium mb-6"></p>
 
             <div id="dashboard-content" class="hidden">
                 <!-- Layout flex (mobile-first) -->
@@ -241,18 +278,114 @@
                     </div>
                 </div>
 
-                <!-- Footer et Boutons IA -->
-                <div class="mt-12 text-center border-t border-slate-200 pt-8 space-y-4">
+                <!-- Footer et Boutons IA (élève) -->
+                <div id="student-dashboard-actions" class="mt-12 text-center border-t border-slate-200 pt-8 space-y-4">
                     <button id="copy-results-button" class="w-full md:w-auto mx-auto flex items-center justify-center gap-2 text-white font-semibold py-3 px-6 rounded-lg shadow-md transition-all duration-300 bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-700 hover:to-teal-600">
                         <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
                         <span id="copy-results-button-label">Copier les résultats</span>
                     </button>
                     <p class="text-xs text-slate-400">Copie le classement et les matchs joués, puis ouvre le Carnet d'entraînement dans un nouvel onglet.</p>
+
+                    <button id="show-results-qr-button" class="w-full md:w-auto mx-auto flex items-center justify-center gap-2 text-white font-semibold py-3 px-6 rounded-lg shadow-md transition-all duration-300 bg-gradient-to-r from-indigo-600 to-blue-500 hover:from-indigo-700 hover:to-blue-600">
+                        📱 Donner mes résultats au prof (QR code)
+                    </button>
+                    <p class="text-xs text-slate-400">Affiche un QR code que ton enseignant(e) peut scanner pour récupérer les résultats de la poule.</p>
+
                     <button id="reset-button" class="text-slate-500 hover:text-red-600 hover:underline flex items-center justify-center gap-2 mx-auto">
                         <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
                         Recommencer (tout effacer)
                     </button>
+                    <button id="main-change-role-button" class="block mx-auto text-xs text-slate-400 hover:text-slate-600 underline">Changer de rôle</button>
                 </div>
+
+                <!-- Footer et Boutons IA (enseignant, saisie manuelle) -->
+                <div id="teacher-manual-actions" class="hidden mt-12 text-center border-t border-slate-200 pt-8 space-y-4">
+                    <button id="teacher-manual-back-button" class="w-full md:w-auto mx-auto flex items-center justify-center gap-2 text-white font-semibold py-3 px-6 rounded-lg shadow-md transition-all duration-300 bg-gradient-to-r from-indigo-600 to-blue-500 hover:from-indigo-700 hover:to-blue-600">
+                        ⬅️ Retour à mes poules
+                    </button>
+                    <button id="teacher-manual-reset-button" class="text-slate-500 hover:text-red-600 hover:underline flex items-center justify-center gap-2 mx-auto">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
+                        Réinitialiser les matchs de cette poule
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- ÉCRAN ENSEIGNANT -->
+        <div id="screen-teacher" class="screen bg-white p-6 md:p-8 rounded-2xl shadow-lg">
+            <h1 class="flex items-center justify-center text-3xl font-bold text-center text-indigo-700 mb-8">
+                👩‍🏫 Espace Enseignant
+            </h1>
+
+            <!-- Création d'une poule -->
+            <div class="mb-10 p-5 bg-indigo-50 rounded-xl">
+                <h2 class="text-xl font-semibold text-slate-800 mb-4">Créer une poule</h2>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                    <div>
+                        <label for="teacher-pool-name" class="block text-sm font-medium text-slate-600 mb-1">Nom de la poule</label>
+                        <input type="text" id="teacher-pool-name" placeholder="Ex. Poule 1" class="w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+                    </div>
+                    <div>
+                        <label for="teacher-pool-player-count" class="block text-sm font-medium text-slate-600 mb-1">Nombre de joueurs</label>
+                        <select id="teacher-pool-player-count" class="w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+                            <option value="6">6 Joueurs</option>
+                            <option value="7">7 Joueurs</option>
+                            <option value="8">8 Joueurs</option>
+                            <option value="9">9 Joueurs</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label for="teacher-pool-target" class="block text-sm font-medium text-slate-600 mb-1">Objectif de matchs</label>
+                        <input type="number" id="teacher-pool-target" value="5" min="2" max="10" class="w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+                    </div>
+                </div>
+                <div class="grid grid-cols-3 gap-4 mb-4">
+                    <div>
+                        <label for="teacher-pool-points-win" class="block text-xs font-medium text-slate-500 mb-1">Victoire</label>
+                        <input type="number" id="teacher-pool-points-win" value="3" min="0" class="w-full p-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+                    </div>
+                    <div>
+                        <label for="teacher-pool-points-draw" class="block text-xs font-medium text-slate-500 mb-1">Nul</label>
+                        <input type="number" id="teacher-pool-points-draw" value="2" min="0" class="w-full p-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+                    </div>
+                    <div>
+                        <label for="teacher-pool-points-loss" class="block text-xs font-medium text-slate-500 mb-1">Défaite</label>
+                        <input type="number" id="teacher-pool-points-loss" value="1" min="0" class="w-full p-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+                    </div>
+                </div>
+                <div id="teacher-pool-eps-class-picker" class="hidden mb-4">
+                    <label for="teacher-pool-eps-class-select" class="block text-sm font-medium text-slate-600 mb-1">Classe EPS Manager</label>
+                    <select id="teacher-pool-eps-class-select" class="w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+                        <option value="">— Saisie manuelle —</option>
+                    </select>
+                    <p class="text-xs text-slate-500 mt-1">Choisis une classe pour cocher directement les élèves de cette poule ci-dessous.</p>
+                </div>
+                <label class="block text-sm font-medium text-slate-600 mb-2">Noms des joueurs de cette poule</label>
+                <div id="teacher-pool-eps-roster" class="hidden grid grid-cols-1 md:grid-cols-2 gap-x-4 mb-4"></div>
+                <div id="teacher-pool-names-container" class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4"></div>
+                <div id="teacher-pool-error" class="text-red-600 text-center font-medium mb-4 h-5"></div>
+                <button id="teacher-add-pool-button" class="w-full md:w-auto mx-auto flex items-center justify-center gap-2 text-white font-semibold py-3 px-6 rounded-lg shadow-md transition-all duration-300 bg-gradient-to-r from-indigo-600 to-blue-500 hover:from-indigo-700 hover:to-blue-600">
+                    ➕ Créer cette poule
+                </button>
+            </div>
+
+            <!-- Liste des poules -->
+            <div class="mb-10">
+                <div class="flex flex-col md:flex-row justify-between items-center gap-3 mb-4">
+                    <h2 class="text-xl font-semibold text-slate-800">Mes poules (<span id="teacher-pools-count">0</span>)</h2>
+                    <button id="teacher-scan-results-button" class="flex items-center gap-2 text-white font-semibold py-2 px-4 rounded-lg shadow-md transition-all duration-300 bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-700 hover:to-teal-600">
+                        📷 Scanner les résultats d'une poule
+                    </button>
+                </div>
+                <div id="teacher-pools-list" class="space-y-3"></div>
+            </div>
+
+            <div class="text-center border-t border-slate-200 pt-6 space-y-3">
+                <button id="teacher-reset-button" class="text-slate-500 hover:text-red-600 hover:underline flex items-center justify-center gap-2 mx-auto">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
+                    Réinitialiser l'espace enseignant (tout effacer)
+                </button>
+                <button id="teacher-change-role-button" class="block mx-auto text-xs text-slate-400 hover:text-slate-600 underline">Changer de rôle</button>
             </div>
         </div>
     </div>
@@ -293,15 +426,76 @@
         </div>
     </div>
 
+    <!-- MODAL DE CHOIX D'ENVOI VERS LE CARNET -->
+    <div id="carnet-choice-modal" class="modal hidden fixed inset-0 z-50 items-center justify-center p-4 bg-black bg-opacity-60 opacity-0" onclick="closeCarnetChoiceModal()">
+        <div class="modal-panel bg-white w-full max-w-md p-6 rounded-2xl shadow-xl opacity-0 scale-95" onclick="event.stopPropagation()">
+            <h3 class="text-xl font-semibold mb-2 text-slate-800">Envoyer vers le Carnet</h3>
+            <p class="text-sm text-slate-500 mb-6">Comment veux-tu récupérer ces résultats ?</p>
+            <div class="space-y-3">
+                <button id="carnet-choice-open" class="w-full flex items-center justify-center gap-2 text-white font-semibold py-3 px-4 rounded-lg shadow-md transition-all duration-300 bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-700 hover:to-teal-600">
+                    📱 J'ai ma tablette — Ouvrir mon carnet
+                </button>
+                <button id="carnet-choice-save" class="w-full flex items-center justify-center gap-2 text-slate-700 font-semibold py-3 px-4 rounded-lg border border-slate-300 hover:bg-slate-100 transition-colors">
+                    💾 Je n'ai pas ma tablette — Enregistrer pour plus tard
+                </button>
+            </div>
+            <div id="carnet-choice-feedback" class="text-center text-sm text-emerald-600 font-medium mt-4 h-5"></div>
+            <button id="carnet-choice-cancel" class="w-full text-center text-sm text-slate-400 hover:text-slate-600 mt-2">Annuler</button>
+        </div>
+    </div>
+
+    <!-- MODAL AFFICHAGE D'UN QR CODE -->
+    <div id="qr-display-modal" class="modal hidden fixed inset-0 z-50 items-center justify-center p-4 bg-black bg-opacity-60 opacity-0" onclick="closeQrDisplayModal()">
+        <div class="modal-panel bg-white w-full max-w-sm p-6 rounded-2xl shadow-xl opacity-0 scale-95 text-center" onclick="event.stopPropagation()">
+            <h3 id="qr-display-title" class="text-xl font-semibold mb-1 text-slate-800">QR code</h3>
+            <p id="qr-display-subtitle" class="text-sm text-slate-500 mb-4"></p>
+            <div id="qr-display-canvas" class="flex justify-center items-center min-h-[280px]"></div>
+            <button id="qr-display-close" class="mt-4 py-2 px-5 bg-slate-200 text-slate-700 rounded-lg hover:bg-slate-300 transition-colors">Fermer</button>
+        </div>
+    </div>
+
+    <!-- MODAL SCAN D'UN QR CODE -->
+    <div id="qr-scan-modal" class="modal hidden fixed inset-0 z-50 items-center justify-center p-4 bg-black bg-opacity-60 opacity-0" onclick="closeQrScanModal()">
+        <div class="modal-panel bg-white w-full max-w-sm p-6 rounded-2xl shadow-xl opacity-0 scale-95 text-center" onclick="event.stopPropagation()">
+            <h3 id="qr-scan-title" class="text-xl font-semibold mb-3 text-slate-800">Scanner un QR code</h3>
+            <div id="qr-scan-region" class="mb-3"></div>
+            <p id="qr-scan-status" class="text-sm text-slate-500 min-h-[1.25rem]"></p>
+            <button id="qr-scan-cancel" class="mt-3 py-2 px-5 bg-slate-200 text-slate-700 rounded-lg hover:bg-slate-300 transition-colors">Annuler</button>
+        </div>
+    </div>
+
+    <!-- MODAL DÉTAIL DES RÉSULTATS D'UNE POULE (VUE ENSEIGNANT) -->
+    <div id="pool-results-modal" class="modal hidden fixed inset-0 z-50 items-center justify-center p-4 bg-black bg-opacity-60 opacity-0" onclick="closePoolResultsModal()">
+        <div class="modal-panel bg-white w-full max-w-lg p-6 rounded-2xl shadow-xl max-h-[80vh] overflow-y-auto opacity-0 scale-95" onclick="event.stopPropagation()">
+            <div class="flex justify-between items-center mb-4">
+                <h3 id="pool-results-title" class="text-2xl font-semibold text-slate-800">Résultats</h3>
+                <button id="pool-results-close" class="p-2 text-slate-400 hover:text-slate-600 rounded-full hover:bg-slate-100">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                </button>
+            </div>
+            <div id="pool-results-content" class="space-y-3"></div>
+        </div>
+    </div>
+
+    <!-- Intégration EPS Manager (ignorée si l'app n'est pas ouverte comme module associé) -->
+    <script src="eps-sdk.js"></script>
+
     <script>
         // --- VARIABLES GLOBALES ---
-        let allPlayers = []; 
+        let appRole = null; // 'teacher' | 'student'
+        let allPlayers = [];
         let selectedMatchesForTournament = [];
-        let MIN_MATCH_TARGET = 5; 
+        let MIN_MATCH_TARGET = 5;
         let pointsConfig = { win: 3, draw: 2, loss: 1 };
         let currentMatchIdToScore = null;
         let justFinishedMatchId = null;
         let lastScoreboard = [];
+        let currentPoolId = null;
+        let currentPoolName = '';
+        let teacherPools = [];
+        let activeQrScanner = null;
+        let teacherManualEntryPoolId = null;
+        let epsClasses = []; // classes reçues d'EPS Manager, si l'app est ouverte comme module associé
 
         function escapeHtml(str) {
             return String(str).replace(/[&<>"']/g, ch => ({
@@ -310,7 +504,19 @@
         }
 
         // --- ÉLÉMENTS DU DOM ---
-        const screens = { setup: document.getElementById('screen-setup'), main: document.getElementById('screen-main') };
+        const screens = {
+            role: document.getElementById('screen-role'),
+            setup: document.getElementById('screen-setup'),
+            main: document.getElementById('screen-main'),
+            teacher: document.getElementById('screen-teacher')
+        };
+        const roleTeacherButton = document.getElementById('role-teacher-button');
+        const roleStudentButton = document.getElementById('role-student-button');
+        const setupChangeRoleButton = document.getElementById('setup-change-role-button');
+        const mainChangeRoleButton = document.getElementById('main-change-role-button');
+        const teacherChangeRoleButton = document.getElementById('teacher-change-role-button');
+        const scanPoolQrButton = document.getElementById('scan-pool-qr-button');
+        const showResultsQrButton = document.getElementById('show-results-qr-button');
         const playerCountSelect = document.getElementById('player-count');
         const matchTargetInput = document.getElementById('match-target');
         const pointsWinInput = document.getElementById('points-win');
@@ -330,7 +536,6 @@
         const matchesPlayedCount = document.getElementById('matches-played-count');
         const copyScoreboardButton = document.getElementById('copy-scoreboard-button');
         const copyResultsButton = document.getElementById('copy-results-button');
-        const copyResultsButtonLabel = document.getElementById('copy-results-button-label');
         const CARNET_URL = 'https://carnetentrainementv2.vercel.app/';
 
         // Modaux
@@ -350,7 +555,57 @@
         const statsModalTitle = document.getElementById('stats-modal-title');
         const statsModalContent = document.getElementById('stats-modal-content');
         const statsModalCloseButton = document.getElementById('stats-modal-close');
-        
+
+        const carnetChoiceModal = document.getElementById('carnet-choice-modal');
+        const carnetChoiceModalPanel = carnetChoiceModal.querySelector('.modal-panel');
+        const carnetChoiceOpenButton = document.getElementById('carnet-choice-open');
+        const carnetChoiceSaveButton = document.getElementById('carnet-choice-save');
+        const carnetChoiceCancelButton = document.getElementById('carnet-choice-cancel');
+        const carnetChoiceFeedback = document.getElementById('carnet-choice-feedback');
+
+        const qrDisplayModal = document.getElementById('qr-display-modal');
+        const qrDisplayModalPanel = qrDisplayModal.querySelector('.modal-panel');
+        const qrDisplayTitle = document.getElementById('qr-display-title');
+        const qrDisplaySubtitle = document.getElementById('qr-display-subtitle');
+        const qrDisplayCanvas = document.getElementById('qr-display-canvas');
+        const qrDisplayCloseButton = document.getElementById('qr-display-close');
+
+        const qrScanModal = document.getElementById('qr-scan-modal');
+        const qrScanModalPanel = qrScanModal.querySelector('.modal-panel');
+        const qrScanTitle = document.getElementById('qr-scan-title');
+        const qrScanRegion = document.getElementById('qr-scan-region');
+        const qrScanStatus = document.getElementById('qr-scan-status');
+        const qrScanCancelButton = document.getElementById('qr-scan-cancel');
+
+        const poolResultsModal = document.getElementById('pool-results-modal');
+        const poolResultsModalPanel = poolResultsModal.querySelector('.modal-panel');
+        const poolResultsTitle = document.getElementById('pool-results-title');
+        const poolResultsContent = document.getElementById('pool-results-content');
+        const poolResultsCloseButton = document.getElementById('pool-results-close');
+
+        // Espace enseignant
+        const teacherPoolNameInput = document.getElementById('teacher-pool-name');
+        const teacherPoolPlayerCountSelect = document.getElementById('teacher-pool-player-count');
+        const teacherPoolTargetInput = document.getElementById('teacher-pool-target');
+        const teacherPoolPointsWinInput = document.getElementById('teacher-pool-points-win');
+        const teacherPoolPointsDrawInput = document.getElementById('teacher-pool-points-draw');
+        const teacherPoolPointsLossInput = document.getElementById('teacher-pool-points-loss');
+        const teacherPoolNamesContainer = document.getElementById('teacher-pool-names-container');
+        const teacherPoolEpsClassPicker = document.getElementById('teacher-pool-eps-class-picker');
+        const teacherPoolEpsClassSelect = document.getElementById('teacher-pool-eps-class-select');
+        const teacherPoolEpsRoster = document.getElementById('teacher-pool-eps-roster');
+        const teacherPoolError = document.getElementById('teacher-pool-error');
+        const teacherAddPoolButton = document.getElementById('teacher-add-pool-button');
+        const teacherPoolsCount = document.getElementById('teacher-pools-count');
+        const teacherPoolsList = document.getElementById('teacher-pools-list');
+        const teacherScanResultsButton = document.getElementById('teacher-scan-results-button');
+        const teacherResetButton = document.getElementById('teacher-reset-button');
+        const teacherManualBanner = document.getElementById('teacher-manual-banner');
+        const studentDashboardActions = document.getElementById('student-dashboard-actions');
+        const teacherManualActions = document.getElementById('teacher-manual-actions');
+        const teacherManualBackButton = document.getElementById('teacher-manual-back-button');
+        const teacherManualResetButton = document.getElementById('teacher-manual-reset-button');
+
         // Bandeau
         const resumeBanner = document.getElementById('resume-banner');
         const resumeContinueButton = document.getElementById('resume-continue-button');
@@ -359,8 +614,12 @@
 
         // --- LOGIQUE DE PERSISTANCE (localStorage) ---
         function saveState() {
+            if (teacherManualEntryPoolId) {
+                syncManualSessionToPool();
+                return;
+            }
             try {
-                const state = { allPlayers, selectedMatchesForTournament, MIN_MATCH_TARGET, pointsConfig };
+                const state = { allPlayers, selectedMatchesForTournament, MIN_MATCH_TARGET, pointsConfig, currentPoolId, currentPoolName };
                 localStorage.setItem('tournamentData_v7', JSON.stringify(state));
             } catch (e) { console.error(e); }
         }
@@ -379,9 +638,11 @@
                     selectedMatchesForTournament = state.selectedMatchesForTournament;
                     MIN_MATCH_TARGET = state.MIN_MATCH_TARGET;
                     pointsConfig = state.pointsConfig || pointsConfig;
+                    currentPoolId = state.currentPoolId || null;
+                    currentPoolName = state.currentPoolName || '';
                     resumeBanner.classList.remove('hidden');
                     screens.setup.classList.add('active');
-                    
+
                     // Pré-remplir les champs de réglages
                     if (pointsWinInput && pointsDrawInput && pointsLossInput) {
                         pointsWinInput.value = pointsConfig.win;
@@ -393,31 +654,73 @@
                     }
                 }
             } catch (e) {
-                localStorage.removeItem('tournamentData_v7'); 
+                localStorage.removeItem('tournamentData_v7');
                 showScreen('setup');
                 updatePlayerInputs();
             }
         }
-        
+
         function resumeTournament() {
             resumeBanner.classList.add('hidden');
             showScreen('main');
             updateGenerationInfo();
-            dashboardContent.classList.remove('hidden'); 
+            dashboardContent.classList.remove('hidden');
             renderAll();
         }
 
         function startNewFromResume() {
             resumeBanner.classList.add('hidden');
-            clearState(); 
-            showScreen('setup'); 
+            clearState();
+            showScreen('setup');
             updatePlayerInputs();
         }
-        
+
         function clearState() {
             localStorage.removeItem('tournamentData_v7');
             allPlayers = [];
             selectedMatchesForTournament = [];
+            currentPoolId = null;
+            currentPoolName = '';
+        }
+
+        // --- GESTION DU RÔLE (ENSEIGNANT / ÉLÈVE) ---
+        function initApp() {
+            const role = localStorage.getItem('appRole_v1');
+            if (role === 'teacher') {
+                appRole = 'teacher';
+                showScreen('teacher');
+                loadTeacherPools();
+                updateTeacherPoolNameInputs();
+                initEpsManagerIntegration();
+                renderTeacherPools();
+            } else if (role === 'student') {
+                appRole = 'student';
+                loadState();
+            } else {
+                showScreen('role');
+            }
+        }
+
+        function chooseRole(role) {
+            appRole = role;
+            teacherManualEntryPoolId = null;
+            try { localStorage.setItem('appRole_v1', role); } catch (e) { console.error(e); }
+            if (role === 'teacher') {
+                showScreen('teacher');
+                loadTeacherPools();
+                updateTeacherPoolNameInputs();
+                initEpsManagerIntegration();
+                renderTeacherPools();
+            } else {
+                loadState();
+            }
+        }
+
+        function changeRole() {
+            try { localStorage.removeItem('appRole_v1'); } catch (e) { console.error(e); }
+            appRole = null;
+            teacherManualEntryPoolId = null;
+            showScreen('role');
         }
 
         // --- LOGIQUE DE L'APPLICATION ---
@@ -453,33 +756,59 @@
         async function startTournament() {
             const nameInputs = playerNamesContainer.querySelectorAll('input');
             const names = Array.from(nameInputs).map(input => input.value.trim());
-            MIN_MATCH_TARGET = parseInt(matchTargetInput.value, 10);
+            const target = parseInt(matchTargetInput.value, 10);
             const winPoints = parseInt(pointsWinInput.value, 10);
             const drawPoints = parseInt(pointsDrawInput.value, 10);
             const lossPoints = parseInt(pointsLossInput.value, 10);
 
             const pointsInvalid = [winPoints, drawPoints, lossPoints].some(p => isNaN(p) || p < 0);
-            if (isNaN(MIN_MATCH_TARGET) || MIN_MATCH_TARGET < 1) { showError('Objectif invalide.'); return; }
+            if (isNaN(target) || target < 1) { showError('Objectif invalide.'); return; }
             if (pointsInvalid) { showError('Barème invalide.'); return; }
             if (winPoints === 0 && drawPoints === 0 && lossPoints === 0) { showError('Le barème doit donner au moins 1 point.'); return; }
             if (names.some(name => name === '')) { showError('Remplissez tous les noms.'); return; }
             const uniqueNames = new Set(names);
             if (uniqueNames.size !== names.length) { showError('Noms uniques requis.'); return; }
 
-            showError(''); 
+            showError('');
+            currentPoolId = null;
+            currentPoolName = '';
+            launchTournament(names, target, { win: winPoints, draw: drawPoints, loss: lossPoints });
+        }
+
+        // Lance (ou relance via un QR de poule) un tournoi avec des joueurs/réglages donnés.
+        function launchTournament(names, target, points) {
             showScreen('main');
             generationInfo.textContent = '';
             dashboardContent.classList.remove('hidden');
 
-            pointsConfig = { win: winPoints, draw: drawPoints, loss: lossPoints };
+            MIN_MATCH_TARGET = target;
+            pointsConfig = points;
             allPlayers = names.map(name => ({ name: name, matchResults: [] }));
-            
+
             const allPossibleMatches = generateAllPossibleMatches();
             selectedMatchesForTournament = selectBalancedMatches(allPossibleMatches, allPlayers, MIN_MATCH_TARGET);
-            
+
             updateGenerationInfo();
             renderAll();
-            saveState(); 
+            saveState();
+        }
+
+        // Applique le QR code "setup" scanné depuis la tablette de l'enseignant :
+        // démarre directement le tournoi de la poule correspondante.
+        function applyPoolSetupPayload(raw) {
+            let payload;
+            try { payload = JSON.parse(raw); } catch (e) { qrScanStatus.textContent = 'QR code invalide.'; return; }
+            if (!payload || payload.t !== 'setup' || !Array.isArray(payload.players) || !Array.isArray(payload.points)) {
+                qrScanStatus.textContent = "Ce QR code n'est pas un QR code de poule.";
+                return;
+            }
+
+            currentPoolId = payload.id || null;
+            currentPoolName = payload.name || '';
+            showError('');
+            launchTournament(payload.players, payload.target, {
+                win: payload.points[0], draw: payload.points[1], loss: payload.points[2]
+            });
         }
 
         function showError(message) { setupError.textContent = message; }
@@ -727,21 +1056,24 @@
             renderMatchLists();
         }
 
-        function renderScoreboard() {
-            scoreboardBody.innerHTML = '';
-            const playerStats = allPlayers.map(player => {
+        function computeScoreboard(players, target) {
+            const playerStats = players.map(player => {
                 const totalMatchesPlayed = player.matchResults.length;
-                const scoredMatches = player.matchResults.slice(0, MIN_MATCH_TARGET);
+                const scoredMatches = player.matchResults.slice(0, target);
                 const totalPoints = scoredMatches.reduce((acc, r) => acc + r.points, 0);
                 const goalAverage = scoredMatches.reduce((acc, r) => acc + (r.scoreFor - r.scoreAgainst), 0);
                 return { name: player.name, totalMatchesPlayed, totalPoints, goalAverage };
             });
-            
-            const sortedPlayers = playerStats.sort((a, b) => {
+            return playerStats.sort((a, b) => {
                 if (a.totalPoints !== b.totalPoints) return b.totalPoints - a.totalPoints;
                 if (a.goalAverage !== b.goalAverage) return b.goalAverage - a.goalAverage;
                 return a.name.localeCompare(b.name);
             });
+        }
+
+        function renderScoreboard() {
+            scoreboardBody.innerHTML = '';
+            const sortedPlayers = computeScoreboard(allPlayers, MIN_MATCH_TARGET);
             lastScoreboard = sortedPlayers;
 
             let showFooter = false;
@@ -785,6 +1117,38 @@
         function renderMatchLists() {
             matchesToPlayList.innerHTML = '';
 
+            if (teacherManualEntryPoolId) {
+                // --- VUE ENSEIGNANT : TOUS LES MATCHS, SAISISSABLES DANS N'IMPORTE QUEL ORDRE ---
+                const pendingMatches = selectedMatchesForTournament
+                    .map((match, index) => ({ match, index }))
+                    .filter(({ match }) => match.winner === null);
+
+                matchesToPlayCount.textContent = pendingMatches.length;
+
+                if (pendingMatches.length === 0) {
+                    matchesToPlayList.innerHTML = '<p class="text-center text-slate-500 py-8 bg-slate-100 rounded-lg">🎉 Tous les matchs sont joués ! 🎉</p>';
+                } else {
+                    pendingMatches.forEach(({ match, index }) => {
+                        const teamA = escapeHtml(match.teamA.players.map(p => p.name).join(', '));
+                        const teamB = escapeHtml(match.teamB.players.map(p => p.name).join(', '));
+                        const refereeNames = match.referees.length > 0 ? `Arbitre(s) : ${escapeHtml(match.referees.map(p => p.name).join(', '))}` : 'Aucun arbitre';
+
+                        const matchElement = document.createElement('div');
+                        matchElement.className = 'p-4 border border-slate-200 rounded-xl bg-white shadow-sm flex flex-col md:flex-row md:items-center md:justify-between gap-3';
+                        matchElement.innerHTML = `
+                            <div>
+                                <p class="text-sm font-semibold text-indigo-600 mb-1">Match ${index + 1}</p>
+                                <p class="font-medium text-slate-800">${teamA} <span class="text-slate-400">vs</span> ${teamB}</p>
+                                <p class="text-xs text-slate-500 mt-1">${refereeNames}</p>
+                            </div>
+                            <button data-action="score" data-match-id="${escapeHtml(match.id)}" class="shrink-0 py-2 px-4 text-sm font-semibold text-white rounded-lg shadow-md bg-gradient-to-r from-indigo-600 to-blue-500 hover:from-indigo-700 hover:to-blue-600 transition-all">
+                                Saisir le score
+                            </button>
+                        `;
+                        matchesToPlayList.appendChild(matchElement);
+                    });
+                }
+            } else {
             // --- AFFICHER LE PROCHAIN MATCH OU LE RÉSULTAT PRÉCÉDENT ---
             if (justFinishedMatchId) {
                 const finishedMatch = selectedMatchesForTournament.find(m => m.id === justFinishedMatchId);
@@ -821,7 +1185,7 @@
                 const nextMatch = selectedMatchesForTournament.find(m => m.winner === null);
                 if (nextMatch) {
                     matchesToPlayCount.textContent = selectedMatchesForTournament.filter(m => m.winner === null).length;
-                    
+
                     const teamANames = nextMatch.teamA.players.map((p, i) => `<span class="player-pill player-pill-a player-pill-animated" style="animation-delay: ${100 + i * 100}ms">${escapeHtml(p.name)}</span>`).join('');
                     const teamBNames = nextMatch.teamB.players.map((p, i) => `<span class="player-pill player-pill-b player-pill-animated" style="animation-delay: ${400 + i * 100}ms">${escapeHtml(p.name)}</span>`).join('');
                     const refereeNames = nextMatch.referees.length > 0 ? `Arbitre(s): ${escapeHtml(nextMatch.referees.map(p => p.name).join(', '))}` : 'Aucun arbitre';
@@ -854,16 +1218,20 @@
                     matchesToPlayList.innerHTML = '<p class="text-center text-slate-500 py-8 bg-slate-100 rounded-lg">🎉 Tournoi terminé ! 🎉</p>';
                 }
             }
+            }
 
             // --- LOGIQUE POUR LES MATCHS TERMINÉS ---
             matchesPlayedList.innerHTML = '';
-            const playedMatches = selectedMatchesForTournament.filter(m => m.winner !== null).reverse();
+            const playedMatches = selectedMatchesForTournament
+                .map((match, index) => ({ match, index }))
+                .filter(({ match }) => match.winner !== null)
+                .reverse();
             matchesPlayedCount.textContent = playedMatches.length;
 
             if (playedMatches.length === 0) {
                 matchesPlayedList.innerHTML = '<p class="text-center text-xs text-slate-400 py-4">Aucun match terminé pour le moment.</p>';
             } else {
-                playedMatches.forEach(match => {
+                playedMatches.forEach(({ match, index }) => {
                     const scoreDisplay = `(${match.scoreA} - ${match.scoreB})`;
                     let resultText;
                     if (match.winner === 'D') {
@@ -873,11 +1241,12 @@
                         resultText = `${winnerName} <span class="text-slate-800">a gagné</span>`;
                     }
                     const refereeNames = match.referees.length > 0 ? `Arbitre(s): ${escapeHtml(match.referees.map(p => p.name).join(', '))}` : 'Aucun arbitre';
+                    const matchNumberLabel = teacherManualEntryPoolId ? `<p class="text-xs font-semibold text-indigo-500">Match ${index + 1}</p>` : '';
                     const matchElement = document.createElement('div');
                     matchElement.className = 'p-3 border border-slate-200 rounded-lg bg-slate-50';
                     matchElement.innerHTML = `
                         <div class="flex justify-between items-start">
-                            <div><p>${resultText} <strong class="text-slate-900 ml-2">${scoreDisplay}</strong></p><p class="text-xs text-slate-500">${refereeNames}</p></div>
+                            <div>${matchNumberLabel}<p>${resultText} <strong class="text-slate-900 ml-2">${scoreDisplay}</strong></p><p class="text-xs text-slate-500">${refereeNames}</p></div>
                             <button data-action="edit" data-match-id="${escapeHtml(match.id)}" class="p-2 -mt-1 -mr-1 text-slate-400 hover:text-indigo-600 rounded-lg transition-colors"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg></button>
                         </div>
                     `;
@@ -885,7 +1254,7 @@
                 });
             }
         }
-        
+
         function resetApp() {
             if (confirm('Réinitialiser le tournoi ?')) {
                 clearState();
@@ -1026,33 +1395,77 @@
             setTimeout(() => statsModal.classList.add('hidden'), 300);
         }
 
-        // --- COPIE DES RÉSULTATS VERS LE CARNET D'ENTRAÎNEMENT ---
+        // --- ENVOI DES RÉSULTATS VERS LE CARNET D'ENTRAÎNEMENT ---
+        // Le Carnet ne conserve, sur l'attribut style (au collage comme à l'import), que :
+        // color, background-color, background, font-weight, font-style, font-size,
+        // text-align, text-decoration, border, border-collapse, padding, width, max-width.
+        // Tout le style doit donc être inline avec uniquement ces propriétés
+        // (pas de classes CSS, pas de <style>).
         function buildResultsHtml() {
             const playedMatches = selectedMatchesForTournament.filter(m => m.winner !== null);
 
+            const tableStyle = 'border-collapse:collapse;width:100%;max-width:600px';
+            const thStyle = 'background:linear-gradient(90deg,#4f46e5,#3b82f6);color:#ffffff;padding:8px 10px;text-align:left;border:1px solid #4338ca;font-weight:bold';
+            const thCenterStyle = `${thStyle};text-align:center`;
+            const tdStyle = 'padding:8px 10px;border:1px solid #e2e8f0;text-align:center';
+            const tdLeftStyle = 'padding:8px 10px;border:1px solid #e2e8f0;text-align:left';
+
             const rankingRows = lastScoreboard.map((p, i) => {
                 const ga = p.goalAverage > 0 ? `+${p.goalAverage}` : p.goalAverage;
-                return `<tr><td>${i + 1}</td><td>${escapeHtml(p.name)}</td><td>${p.totalPoints}</td><td>${ga}</td><td>${p.totalMatchesPlayed}</td></tr>`;
+                const rowStyle = i === 0 ? 'background-color:#fef3c7'
+                    : (i % 2 === 1 ? 'background-color:#f8fafc' : 'background-color:#ffffff');
+                return `<tr style="${rowStyle}">
+                    <td style="${tdStyle};font-weight:bold">${i + 1}</td>
+                    <td style="${tdLeftStyle}">${escapeHtml(p.name)}</td>
+                    <td style="${tdStyle};font-weight:bold;color:#4338ca">${p.totalPoints}</td>
+                    <td style="${tdStyle}">${ga}</td>
+                    <td style="${tdStyle}">${p.totalMatchesPlayed}</td>
+                </tr>`;
             }).join('');
+
+            const resultStyle = (winner) => {
+                if (winner === 'D') return 'background-color:#f1f5f9;color:#475569;font-weight:bold';
+                if (winner === 'A') return 'background-color:#e0e7ff;color:#3730a3;font-weight:bold';
+                return 'background-color:#dcfce7;color:#15803d;font-weight:bold';
+            };
 
             const matchRows = playedMatches.map((m, i) => {
                 const teamA = escapeHtml(m.teamA.players.map(p => p.name).join(', '));
                 const teamB = escapeHtml(m.teamB.players.map(p => p.name).join(', '));
                 const result = m.winner === 'D' ? 'Match nul' : (m.winner === 'A' ? 'Victoire équipe A' : 'Victoire équipe B');
-                return `<tr><td>${i + 1}</td><td>${teamA}</td><td>${m.scoreA} - ${m.scoreB}</td><td>${teamB}</td><td>${result}</td></tr>`;
+                const rowStyle = i % 2 === 1 ? 'background-color:#f8fafc' : 'background-color:#ffffff';
+                return `<tr style="${rowStyle}">
+                    <td style="${tdStyle}">${i + 1}</td>
+                    <td style="${tdLeftStyle}">${teamA}</td>
+                    <td style="${tdStyle};font-weight:bold">${m.scoreA} - ${m.scoreB}</td>
+                    <td style="${tdLeftStyle}">${teamB}</td>
+                    <td style="${tdStyle};${resultStyle(m.winner)}">${result}</td>
+                </tr>`;
             }).join('');
 
             return `
-                <h3>Résultats — Poules tournantes VB</h3>
+                <h3 style="color:#4338ca">Résultats — Poules tournantes VB</h3>
                 <p><strong>${playedMatches.length}</strong> match(s) joué(s) sur ${selectedMatchesForTournament.length} · Objectif : ${MIN_MATCH_TARGET} matchs par joueur · Barème : V${pointsConfig.win} / N${pointsConfig.draw} / D${pointsConfig.loss}</p>
-                <h4>Classement</h4>
-                <table>
-                    <thead><tr><th>#</th><th>Joueur</th><th>Pts</th><th>GA</th><th>Joués</th></tr></thead>
+                <h4 style="color:#1e293b">Classement</h4>
+                <table style="${tableStyle}">
+                    <thead><tr>
+                        <th style="${thStyle}">#</th>
+                        <th style="${thStyle}">Joueur</th>
+                        <th style="${thCenterStyle}">Pts</th>
+                        <th style="${thCenterStyle}">GA</th>
+                        <th style="${thCenterStyle}">Joués</th>
+                    </tr></thead>
                     <tbody>${rankingRows}</tbody>
                 </table>
-                <h4>Matchs joués</h4>
-                <table>
-                    <thead><tr><th>#</th><th>Équipe A</th><th>Score</th><th>Équipe B</th><th>Résultat</th></tr></thead>
+                <h4 style="color:#1e293b">Matchs joués</h4>
+                <table style="${tableStyle}">
+                    <thead><tr>
+                        <th style="${thStyle}">#</th>
+                        <th style="${thStyle}">Équipe A</th>
+                        <th style="${thCenterStyle}">Score</th>
+                        <th style="${thStyle}">Équipe B</th>
+                        <th style="${thStyle}">Résultat</th>
+                    </tr></thead>
                     <tbody>${matchRows}</tbody>
                 </table>
             `.trim();
@@ -1086,7 +1499,7 @@
         function copyResultsToClipboard(html, text) {
             function handler(e) {
                 e.clipboardData.setData('text/plain', text);
-                e.clipboardData.setData('text/html', `<!--CARNET_MATCH_RESULTS_V1-->${html}`);
+                e.clipboardData.setData('text/html', `<!--CARNET_RESULTS_V1-->${html}`);
                 e.preventDefault();
             }
             document.addEventListener('copy', handler);
@@ -1095,8 +1508,51 @@
             return ok;
         }
 
-        async function onCopyResultsClick() {
+        // Télécharge un .json (html + text) que le Carnet sait relire via son
+        // bouton "Importer", pour l'élève qui n'a pas sa tablette sous la main.
+        function exportResultsToFile(html, text) {
+            const payload = {
+                format: 'carnet-contenu-externe',
+                version: 1,
+                generatedAt: new Date().toISOString(),
+                html,
+                text
+            };
+            const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+            const fileName = `carnet-resultats-${new Date().toISOString().slice(0, 10)}.json`;
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = fileName;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            setTimeout(() => URL.revokeObjectURL(url), 1000);
+        }
+
+        function flashCarnetChoiceFeedback(message) {
+            carnetChoiceFeedback.textContent = message;
+            setTimeout(() => { carnetChoiceFeedback.textContent = ''; }, 2000);
+        }
+
+        function openCarnetChoiceModal() {
             if (lastScoreboard.length === 0) return;
+            carnetChoiceFeedback.textContent = '';
+            carnetChoiceModal.classList.remove('hidden');
+            setTimeout(() => {
+                carnetChoiceModal.classList.remove('opacity-0');
+                carnetChoiceModalPanel.classList.remove('opacity-0', 'scale-95');
+            }, 10);
+        }
+
+        function closeCarnetChoiceModal() {
+            carnetChoiceModal.classList.add('opacity-0');
+            carnetChoiceModalPanel.classList.add('opacity-0', 'scale-95');
+            setTimeout(() => carnetChoiceModal.classList.add('hidden'), 300);
+        }
+
+        // Choix A : copier dans le presse-papiers puis ouvrir le Carnet dans un nouvel onglet.
+        async function onOpenCarnetClick() {
             const html = buildResultsHtml();
             const text = buildResultsText();
             const ok = copyResultsToClipboard(html, text);
@@ -1105,13 +1561,619 @@
                 try { await navigator.clipboard.writeText(text); } catch (e) { console.error(e); }
             }
 
-            copyResultsButtonLabel.textContent = 'Résultats copiés !';
-            setTimeout(() => { copyResultsButtonLabel.textContent = 'Copier les résultats'; }, 2000);
-
+            closeCarnetChoiceModal();
             window.open(CARNET_URL, '_blank');
         }
 
+        // Choix B : enregistrer un fichier à importer plus tard dans le Carnet.
+        function onSaveForLaterClick() {
+            const html = buildResultsHtml();
+            const text = buildResultsText();
+            exportResultsToFile(html, text);
+            flashCarnetChoiceFeedback('Fichier enregistré ! Importe-le dans ton Carnet une fois ta tablette récupérée.');
+        }
+
+        // --- QR CODES : AFFICHAGE GÉNÉRIQUE ---
+        // Génère une image de QR code (data URL) à partir d'un texte, en niveau de
+        // correction d'erreur 'L' pour maximiser la capacité (payloads JSON compacts).
+        function generateQrDataUrl(text) {
+            const qr = qrcode(0, 'L');
+            qr.addData(text);
+            qr.make();
+            return qr.createDataURL(4, 16);
+        }
+
+        function showQrCode(title, subtitle, dataString) {
+            qrDisplayTitle.textContent = title;
+            qrDisplaySubtitle.textContent = subtitle;
+            qrDisplayCanvas.innerHTML = '';
+            qrDisplayModal.classList.remove('hidden');
+            setTimeout(() => {
+                qrDisplayModal.classList.remove('opacity-0');
+                qrDisplayModalPanel.classList.remove('opacity-0', 'scale-95');
+            }, 10);
+
+            if (typeof qrcode === 'undefined') {
+                qrDisplaySubtitle.textContent = "Le générateur de QR code n'a pas pu se charger (vérifie la connexion internet).";
+                return;
+            }
+            try {
+                const img = document.createElement('img');
+                img.src = generateQrDataUrl(dataString);
+                img.alt = 'QR code';
+                img.className = 'max-w-full h-auto';
+                qrDisplayCanvas.appendChild(img);
+            } catch (e) {
+                console.error(e);
+                qrDisplaySubtitle.textContent = 'Contenu trop volumineux pour tenir dans un QR code.';
+            }
+        }
+
+        function closeQrDisplayModal() {
+            qrDisplayModal.classList.add('opacity-0');
+            qrDisplayModalPanel.classList.add('opacity-0', 'scale-95');
+            setTimeout(() => qrDisplayModal.classList.add('hidden'), 300);
+        }
+
+        // --- QR CODES : SCAN GÉNÉRIQUE VIA LA CAMÉRA ---
+        function openQrScanModal(title, onSuccess) {
+            qrScanTitle.textContent = title;
+            qrScanStatus.textContent = 'Démarrage de la caméra…';
+            qrScanRegion.innerHTML = '';
+            qrScanModal.classList.remove('hidden');
+            setTimeout(() => {
+                qrScanModal.classList.remove('opacity-0');
+                qrScanModalPanel.classList.remove('opacity-0', 'scale-95');
+            }, 10);
+
+            if (typeof Html5Qrcode === 'undefined') {
+                qrScanStatus.textContent = "Le lecteur de QR code n'a pas pu se charger (vérifie la connexion internet).";
+                return;
+            }
+
+            // On utilise Html5Qrcode (bas niveau) plutôt que Html5QrcodeScanner afin de
+            // démarrer la caméra directement au clic sur notre bouton, sans bouton
+            // intermédiaire "Demander l'autorisation caméra" fourni par la librairie.
+            activeQrScanner = new Html5Qrcode('qr-scan-region');
+            activeQrScanner.start(
+                { facingMode: 'environment' },
+                { fps: 10, qrbox: 250 },
+                (decodedText) => {
+                    stopQrScanner();
+                    closeQrScanModal();
+                    onSuccess(decodedText);
+                },
+                () => { /* ignore les échecs de lecture image par image */ }
+            ).then(() => {
+                qrScanStatus.textContent = '';
+            }).catch((err) => {
+                qrScanStatus.textContent = "Impossible d'accéder à la caméra. Vérifie les autorisations.";
+                console.error(err);
+            });
+        }
+
+        function stopQrScanner() {
+            if (activeQrScanner) {
+                const scanner = activeQrScanner;
+                activeQrScanner = null;
+                scanner.stop().then(() => scanner.clear()).catch(() => {});
+            }
+        }
+
+        function closeQrScanModal() {
+            stopQrScanner();
+            qrScanModal.classList.add('opacity-0');
+            qrScanModalPanel.classList.add('opacity-0', 'scale-95');
+            setTimeout(() => qrScanModal.classList.add('hidden'), 300);
+        }
+
+        // --- CÔTÉ ÉLÈVE : ENVOYER LES RÉSULTATS DE LA POULE AU PROF PAR QR CODE ---
+        // Encodage compact : les joueurs sont référencés par index plutôt que par nom
+        // pour garder un payload aussi petit que possible (essentiel pour le QR code).
+        function buildPoolResultsPayload() {
+            const playedMatches = selectedMatchesForTournament.filter(m => m.winner !== null);
+            const nameIndex = new Map(allPlayers.map((p, i) => [p.name, i]));
+            const matches = playedMatches.map(m => [
+                m.teamA.players.map(p => nameIndex.get(p.name)),
+                m.teamB.players.map(p => nameIndex.get(p.name)),
+                m.winner,
+                m.scoreA,
+                m.scoreB
+            ]);
+            return JSON.stringify({
+                v: 1, t: 'results',
+                id: currentPoolId || '',
+                name: currentPoolName || 'Poule',
+                players: allPlayers.map(p => p.name),
+                target: MIN_MATCH_TARGET,
+                points: [pointsConfig.win, pointsConfig.draw, pointsConfig.loss],
+                totalMatches: selectedMatchesForTournament.length,
+                matches
+            });
+        }
+
+        function showResultsQrForTeacher() {
+            if (lastScoreboard.length === 0) return;
+            showQrCode(
+                currentPoolName || 'Résultats de la poule',
+                "Fais scanner ce QR code par la tablette de ton enseignant(e).",
+                buildPoolResultsPayload()
+            );
+        }
+
+        // --- CÔTÉ ENSEIGNANT : POULES ---
+        function generatePoolId() {
+            return 'pool_' + Math.random().toString(36).slice(2, 8) + Date.now().toString(36).slice(-4);
+        }
+
+        function saveTeacherPools() {
+            try { localStorage.setItem('teacherPoolsData_v1', JSON.stringify(teacherPools)); } catch (e) { console.error(e); }
+        }
+
+        function loadTeacherPools() {
+            try {
+                const saved = localStorage.getItem('teacherPoolsData_v1');
+                teacherPools = saved ? JSON.parse(saved) : [];
+            } catch (e) { teacherPools = []; }
+        }
+
+        function updateTeacherPoolNameInputs() {
+            const count = parseInt(teacherPoolPlayerCountSelect.value, 10);
+            teacherPoolNamesContainer.innerHTML = '';
+            for (let i = 1; i <= count; i++) {
+                const input = document.createElement('input');
+                input.type = 'text';
+                input.placeholder = `Nom du Joueur ${i}`;
+                input.className = 'w-full p-3 border border-slate-300 rounded-lg focus:ring-1 focus:ring-indigo-500 focus:outline-none';
+                teacherPoolNamesContainer.appendChild(input);
+            }
+        }
+
+        function addTeacherPool() {
+            const name = teacherPoolNameInput.value.trim();
+            const target = parseInt(teacherPoolTargetInput.value, 10);
+            const winPoints = parseInt(teacherPoolPointsWinInput.value, 10);
+            const drawPoints = parseInt(teacherPoolPointsDrawInput.value, 10);
+            const lossPoints = parseInt(teacherPoolPointsLossInput.value, 10);
+            const epsClassId = teacherPoolEpsClassSelect && teacherPoolEpsClassSelect.value ? teacherPoolEpsClassSelect.value : null;
+
+            teacherPoolError.textContent = '';
+            if (!name) { teacherPoolError.textContent = 'Donne un nom à la poule.'; return; }
+            if (teacherPools.some(p => p.name === name)) { teacherPoolError.textContent = 'Une poule porte déjà ce nom.'; return; }
+
+            let players, playerEpsIds;
+            if (epsClassId) {
+                const checked = Array.from(teacherPoolEpsRoster.querySelectorAll('input[type="checkbox"]:checked'));
+                const expectedCount = parseInt(teacherPoolPlayerCountSelect.value, 10);
+                if (checked.length !== expectedCount) {
+                    teacherPoolError.textContent = `Coche exactement ${expectedCount} élève(s) (actuellement ${checked.length}).`;
+                    return;
+                }
+                players = checked.map(cb => cb.dataset.name);
+                playerEpsIds = checked.map(cb => cb.value);
+                if (new Set(players).size !== players.length) {
+                    teacherPoolError.textContent = 'Deux élèves cochés ont un nom affiché identique : décoche-en un.';
+                    return;
+                }
+            } else {
+                const nameInputs = teacherPoolNamesContainer.querySelectorAll('input');
+                players = Array.from(nameInputs).map(input => input.value.trim());
+                playerEpsIds = null;
+                if (players.some(p => p === '')) { teacherPoolError.textContent = 'Remplis tous les noms.'; return; }
+                if (new Set(players).size !== players.length) { teacherPoolError.textContent = 'Noms uniques requis.'; return; }
+            }
+
+            if (isNaN(target) || target < 1) { teacherPoolError.textContent = 'Objectif invalide.'; return; }
+            const pointsInvalid = [winPoints, drawPoints, lossPoints].some(p => isNaN(p) || p < 0);
+            if (pointsInvalid || (winPoints === 0 && drawPoints === 0 && lossPoints === 0)) { teacherPoolError.textContent = 'Barème invalide.'; return; }
+
+            teacherPools.push({
+                id: generatePoolId(),
+                name,
+                players,
+                playerEpsIds,
+                epsClassId,
+                target,
+                points: { win: winPoints, draw: drawPoints, loss: lossPoints },
+                results: null
+            });
+            saveTeacherPools();
+            renderTeacherPools();
+
+            teacherPoolNameInput.value = '';
+            if (epsClassId) { renderEpsRosterPicker(); } else { updateTeacherPoolNameInputs(); }
+        }
+
+        // --- INTÉGRATION EPS MANAGER (ignorée si l'app n'est pas ouverte comme module associé) ---
+        function initEpsManagerIntegration() {
+            if (!window.EPSManager || !EPSManager.available()) return;
+            teacherPoolEpsClassPicker.classList.remove('hidden');
+            refreshEpsClassOptions();
+            teacherPoolEpsClassSelect.addEventListener('change', renderEpsRosterPicker);
+            EPSManager.onChange(() => { refreshEpsClassOptions(); });
+        }
+
+        function refreshEpsClassOptions() {
+            epsClasses = EPSManager.classes();
+            const previousValue = teacherPoolEpsClassSelect.value;
+            teacherPoolEpsClassSelect.innerHTML = '<option value="">— Saisie manuelle —</option>' +
+                epsClasses.map(c => `<option value="${escapeHtml(c.id)}">${escapeHtml(c.name)}</option>`).join('');
+            const focus = EPSManager.focus();
+            if (previousValue && epsClasses.some(c => c.id === previousValue)) {
+                teacherPoolEpsClassSelect.value = previousValue;
+            } else if (focus && focus.classId) {
+                teacherPoolEpsClassSelect.value = focus.classId;
+            }
+            renderEpsRosterPicker();
+        }
+
+        function renderEpsRosterPicker() {
+            const classId = teacherPoolEpsClassSelect.value;
+            if (!classId) {
+                teacherPoolEpsRoster.innerHTML = '';
+                teacherPoolEpsRoster.classList.add('hidden');
+                teacherPoolNamesContainer.classList.remove('hidden');
+                return;
+            }
+            teacherPoolNamesContainer.classList.add('hidden');
+            teacherPoolEpsRoster.classList.remove('hidden');
+            const cls = epsClasses.find(c => c.id === classId);
+            const students = cls ? cls.students.slice().sort((a, b) => (a.last + a.first).localeCompare(b.last + b.first, 'fr')) : [];
+            teacherPoolEpsRoster.innerHTML = students.map(s => {
+                const name = EPSManager.fullName(s);
+                let badge = '';
+                if (s.inapt) badge = ` <span class="text-amber-600 text-xs">(inapte)</span>`;
+                else if (s.attendance && s.attendance !== 'Présent') badge = ` <span class="text-red-500 text-xs">(${escapeHtml(s.attendance)})</span>`;
+                return `<label class="flex items-center gap-2 py-1 text-sm text-slate-700">
+                    <input type="checkbox" value="${escapeHtml(s.id)}" data-name="${escapeHtml(name)}">
+                    <span>${escapeHtml(name)}${badge}</span>
+                </label>`;
+            }).join('') || '<p class="text-sm text-slate-400 col-span-2">Aucun élève dans cette classe.</p>';
+        }
+
+        // Une poule est "terminée" quand tous ses matchs (schedule complet) ont été joués —
+        // condition requise avant d'envoyer quoi que ce soit vers EPS Manager.
+        function isPoolComplete(pool) {
+            if (!pool.results) return false;
+            if (typeof pool.results.totalMatches !== 'number') return true; // anciens résultats sans ce champ
+            return pool.results.matches.length >= pool.results.totalMatches;
+        }
+
+        function buildPoolSummaryText(pool) {
+            const lines = [];
+            lines.push(`Poules tournantes VB — ${pool.name}`);
+            lines.push(`${pool.results.matches.length} match(s) joué(s)`);
+            lines.push('');
+            lines.push('Classement :');
+            pool.results.scoreboard.forEach((p, i) => {
+                const ga = p.goalAverage > 0 ? `+${p.goalAverage}` : p.goalAverage;
+                lines.push(`${i + 1}. ${p.name} — ${p.totalPoints} pts (GA ${ga}, ${p.totalMatchesPlayed} joués)`);
+            });
+            return lines.join('\n');
+        }
+
+        function exportPoolToEpsManager(pool) {
+            if (!window.EPSManager || !EPSManager.available()) return;
+            if (!isPoolComplete(pool)) return;
+
+            const total = pool.results.scoreboard.length;
+            const date = EPSManager.today();
+
+            pool.results.scoreboard.forEach((p, i) => {
+                const idx = pool.players.indexOf(p.name);
+                const epsId = idx >= 0 && pool.playerEpsIds ? pool.playerEpsIds[idx] : null;
+                if (!epsId) return; // élève saisi manuellement : pas d'identifiant EPS Manager, pas d'envoi individuel
+
+                const ga = p.goalAverage > 0 ? `+${p.goalAverage}` : String(p.goalAverage);
+                EPSManager.result({ key: `poulestournante:${pool.id}:rang:${epsId}`, studentId: epsId, label: 'Poules tournantes · Classement', value: `${i + 1}e/${total}`, unit: '', date });
+                EPSManager.result({ key: `poulestournante:${pool.id}:points:${epsId}`, studentId: epsId, label: 'Poules tournantes · Points', value: String(p.totalPoints), unit: 'pts', date });
+                EPSManager.result({ key: `poulestournante:${pool.id}:ga:${epsId}`, studentId: epsId, label: 'Poules tournantes · Goal average', value: ga, unit: '', date });
+            });
+
+            if (pool.epsClassId) {
+                EPSManager.summary({ key: `poulestournante:${pool.id}:resume`, classId: pool.epsClassId, text: buildPoolSummaryText(pool), date });
+            }
+        }
+
+        function formatShortDate(iso) {
+            try {
+                return new Date(iso).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+            } catch (e) { return ''; }
+        }
+
+        function renderTeacherPools() {
+            teacherPoolsCount.textContent = teacherPools.length;
+            teacherPoolsList.innerHTML = '';
+            if (teacherPools.length === 0) {
+                teacherPoolsList.innerHTML = '<p class="text-center text-sm text-slate-400 py-6">Aucune poule créée pour le moment.</p>';
+                return;
+            }
+            teacherPools.forEach(pool => {
+                const statusHtml = pool.results
+                    ? `<p class="text-sm text-emerald-600 font-medium">✅ Résultats reçus le ${formatShortDate(pool.results.receivedAt)}</p>`
+                    : `<p class="text-sm text-slate-500">⏳ En attente de résultats</p>`;
+                const div = document.createElement('div');
+                div.className = 'p-4 border border-slate-200 rounded-xl flex flex-col md:flex-row md:items-center md:justify-between gap-3';
+                div.innerHTML = `
+                    <div>
+                        <p class="font-semibold text-slate-800">${escapeHtml(pool.name)} <span class="text-xs text-slate-400 font-normal">(${pool.players.length} joueurs)</span></p>
+                        ${statusHtml}
+                    </div>
+                    <div class="flex flex-wrap gap-2">
+                        <button data-teacher-action="show-qr" data-pool-id="${pool.id}" class="py-2 px-3 text-sm font-medium bg-indigo-100 text-indigo-700 rounded-lg hover:bg-indigo-200 transition-colors">📱 QR de la poule</button>
+                        <button data-teacher-action="manual-results" data-pool-id="${pool.id}" class="py-2 px-3 text-sm font-medium bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200 transition-colors">✏️ Saisir manuellement</button>
+                        ${pool.results ? `<button data-teacher-action="view-results" data-pool-id="${pool.id}" class="py-2 px-3 text-sm font-medium bg-emerald-100 text-emerald-700 rounded-lg hover:bg-emerald-200 transition-colors">📊 Résultats</button>` : ''}
+                        <button data-teacher-action="delete-pool" data-pool-id="${pool.id}" class="py-2 px-3 text-sm text-slate-400 hover:text-red-600 transition-colors">🗑️</button>
+                    </div>
+                `;
+                teacherPoolsList.appendChild(div);
+            });
+        }
+
+        function deleteTeacherPool(poolId) {
+            const pool = teacherPools.find(p => p.id === poolId);
+            if (!pool) return;
+            if (!confirm(`Supprimer la poule "${pool.name}" ?`)) return;
+            teacherPools = teacherPools.filter(p => p.id !== poolId);
+            saveTeacherPools();
+            renderTeacherPools();
+        }
+
+        function resetTeacherApp() {
+            if (confirm('Supprimer toutes les poules et leurs résultats ?')) {
+                teacherPools = [];
+                localStorage.removeItem('teacherPoolsData_v1');
+                renderTeacherPools();
+            }
+        }
+
+        function buildPoolSetupPayload(pool) {
+            return JSON.stringify({
+                v: 1, t: 'setup',
+                id: pool.id,
+                name: pool.name,
+                players: pool.players,
+                target: pool.target,
+                points: [pool.points.win, pool.points.draw, pool.points.loss]
+            });
+        }
+
+        function showPoolSetupQr(poolId) {
+            const pool = teacherPools.find(p => p.id === poolId);
+            if (!pool) return;
+            showQrCode(pool.name, `${pool.players.length} joueurs — à scanner par les élèves de cette poule`, buildPoolSetupPayload(pool));
+        }
+
+        // --- CÔTÉ ENSEIGNANT : SAISIE MANUELLE DES RÉSULTATS D'UNE POULE ---
+        // Réutilise exactement le même moteur (calendrier de matchs équilibré,
+        // saisie de score, classement) que le tableau de bord élève, mais piloté
+        // depuis la tablette du prof, sans passer par un QR code.
+        function startManualResultsEntry(poolId) {
+            const pool = teacherPools.find(p => p.id === poolId);
+            if (!pool) return;
+
+            if (!pool.manualSession && pool.results) {
+                const confirmed = confirm(
+                    'Cette poule a déjà des résultats reçus par QR code. ' +
+                    'Démarrer la saisie manuelle crée un nouveau calendrier de matchs ' +
+                    'et remplacera ces résultats dès la première saisie. Continuer ?'
+                );
+                if (!confirmed) return;
+            }
+
+            teacherManualEntryPoolId = pool.id;
+            currentPoolId = pool.id;
+            currentPoolName = pool.name;
+            MIN_MATCH_TARGET = pool.target;
+            pointsConfig = pool.points;
+            justFinishedMatchId = null;
+
+            if (pool.manualSession) {
+                allPlayers = pool.manualSession.allPlayers;
+                selectedMatchesForTournament = pool.manualSession.selectedMatchesForTournament;
+            } else {
+                allPlayers = pool.players.map(name => ({ name, matchResults: [] }));
+                const allPossibleMatches = generateAllPossibleMatches();
+                selectedMatchesForTournament = selectBalancedMatches(allPossibleMatches, allPlayers, MIN_MATCH_TARGET);
+                pool.manualSession = { allPlayers, selectedMatchesForTournament };
+                saveTeacherPools();
+            }
+
+            showScreen('main');
+            teacherManualBanner.textContent = `Mode enseignant — saisie manuelle pour la poule « ${pool.name} »`;
+            teacherManualBanner.classList.remove('hidden');
+            studentDashboardActions.classList.add('hidden');
+            teacherManualActions.classList.remove('hidden');
+            generationInfo.textContent = '';
+            dashboardContent.classList.remove('hidden');
+            updateGenerationInfo();
+            renderAll();
+        }
+
+        // Appelée par saveState() pendant la saisie manuelle : au lieu d'écraser la
+        // sauvegarde élève (tournamentData_v7), on persiste dans la poule elle-même,
+        // au même format que les résultats reçus par QR code.
+        function syncManualSessionToPool() {
+            const pool = teacherPools.find(p => p.id === teacherManualEntryPoolId);
+            if (!pool) return;
+
+            pool.manualSession = { allPlayers, selectedMatchesForTournament };
+            pool.results = {
+                receivedAt: new Date().toISOString(),
+                scoreboard: computeScoreboard(allPlayers, MIN_MATCH_TARGET),
+                matches: selectedMatchesForTournament.filter(m => m.winner !== null).map(m => [
+                    m.teamA.players.map(p => pool.players.indexOf(p.name)),
+                    m.teamB.players.map(p => pool.players.indexOf(p.name)),
+                    m.winner, m.scoreA, m.scoreB
+                ]),
+                players: pool.players,
+                totalMatches: selectedMatchesForTournament.length
+            };
+            saveTeacherPools();
+            exportPoolToEpsManager(pool);
+        }
+
+        function exitManualResultsEntry() {
+            teacherManualEntryPoolId = null;
+            teacherManualBanner.classList.add('hidden');
+            studentDashboardActions.classList.remove('hidden');
+            teacherManualActions.classList.add('hidden');
+            showScreen('teacher');
+            renderTeacherPools();
+        }
+
+        function resetManualResultsEntry() {
+            const pool = teacherPools.find(p => p.id === teacherManualEntryPoolId);
+            if (!pool) return;
+            if (!confirm('Recommencer les matchs de cette poule depuis le début ?')) return;
+
+            allPlayers = pool.players.map(name => ({ name, matchResults: [] }));
+            const allPossibleMatches = generateAllPossibleMatches();
+            selectedMatchesForTournament = selectBalancedMatches(allPossibleMatches, allPlayers, MIN_MATCH_TARGET);
+            justFinishedMatchId = null;
+            pool.manualSession = { allPlayers, selectedMatchesForTournament };
+            pool.results = null;
+            saveTeacherPools();
+            updateGenerationInfo();
+            renderAll();
+        }
+
+        // Décode le QR "results" scanné sur la tablette d'un élève et met à jour
+        // (ou crée, si la poule est inconnue) l'entrée correspondante côté enseignant.
+        function applyPoolResultsPayload(raw) {
+            let payload;
+            try { payload = JSON.parse(raw); } catch (e) { qrScanStatus.textContent = 'QR code invalide.'; alert('QR code invalide.'); return; }
+            if (!payload || payload.t !== 'results' || !Array.isArray(payload.players) || !Array.isArray(payload.matches)) {
+                alert("Ce QR code n'est pas un QR code de résultats de poule.");
+                return;
+            }
+
+            const resultPoints = { win: payload.points[0], draw: payload.points[1], loss: payload.points[2] };
+            const players = payload.players.map(name => ({ name, matchResults: [] }));
+
+            payload.matches.forEach((m, idx) => {
+                const [teamAIdx, teamBIdx, winner, scoreA, scoreB] = m;
+                const matchId = 'm' + idx;
+                const pushResult = (playerIdx, result, points, scoreFor, scoreAgainst) => {
+                    players[playerIdx].matchResults.push({ matchId, result, points, scoreFor, scoreAgainst });
+                };
+                if (winner === 'A') {
+                    teamAIdx.forEach(i => pushResult(i, 'win', resultPoints.win, scoreA, scoreB));
+                    teamBIdx.forEach(i => pushResult(i, 'loss', resultPoints.loss, scoreB, scoreA));
+                } else if (winner === 'B') {
+                    teamBIdx.forEach(i => pushResult(i, 'win', resultPoints.win, scoreB, scoreA));
+                    teamAIdx.forEach(i => pushResult(i, 'loss', resultPoints.loss, scoreA, scoreB));
+                } else {
+                    teamAIdx.forEach(i => pushResult(i, 'draw', resultPoints.draw, scoreA, scoreB));
+                    teamBIdx.forEach(i => pushResult(i, 'draw', resultPoints.draw, scoreB, scoreA));
+                }
+            });
+
+            const scoreboard = computeScoreboard(players, payload.target);
+
+            let pool = teacherPools.find(p => p.id === payload.id);
+            if (!pool) {
+                pool = {
+                    id: payload.id || generatePoolId(),
+                    name: payload.name || 'Poule importée',
+                    players: payload.players,
+                    playerEpsIds: null,
+                    epsClassId: null,
+                    target: payload.target,
+                    points: resultPoints,
+                    results: null
+                };
+                teacherPools.push(pool);
+            }
+            pool.results = {
+                receivedAt: new Date().toISOString(),
+                scoreboard,
+                matches: payload.matches,
+                players: payload.players,
+                totalMatches: payload.totalMatches
+            };
+
+            saveTeacherPools();
+            exportPoolToEpsManager(pool);
+            renderTeacherPools();
+            alert(`Résultats de "${pool.name}" bien reçus !`);
+        }
+
+        function openPoolResultsModal(poolId) {
+            const pool = teacherPools.find(p => p.id === poolId);
+            if (!pool || !pool.results) return;
+
+            poolResultsTitle.textContent = `Résultats — ${pool.name}`;
+
+            const rankingRows = pool.results.scoreboard.map((p, i) => {
+                const ga = p.goalAverage > 0 ? `+${p.goalAverage}` : p.goalAverage;
+                return `<tr class="border-t border-slate-200">
+                    <td class="py-2 px-1">${i + 1}</td>
+                    <td class="py-2 px-1 font-medium">${escapeHtml(p.name)}</td>
+                    <td class="py-2 px-1 text-center font-semibold text-indigo-700">${p.totalPoints}</td>
+                    <td class="py-2 px-1 text-center">${ga}</td>
+                    <td class="py-2 px-1 text-center text-slate-500">${p.totalMatchesPlayed}</td>
+                </tr>`;
+            }).join('');
+
+            const matchesHtml = pool.results.matches.map(m => {
+                const [teamAIdx, teamBIdx, winner, scoreA, scoreB] = m;
+                const teamA = escapeHtml(teamAIdx.map(idx => pool.results.players[idx]).join(', '));
+                const teamB = escapeHtml(teamBIdx.map(idx => pool.results.players[idx]).join(', '));
+                const resultLabel = winner === 'D' ? 'Match nul' : (winner === 'A' ? 'Victoire équipe A' : 'Victoire équipe B');
+                return `<div class="p-2 border border-slate-200 rounded-lg bg-slate-50 text-sm">
+                    <strong>${teamA}</strong> ${scoreA} - ${scoreB} <strong>${teamB}</strong>
+                    <span class="text-slate-500">(${resultLabel})</span>
+                </div>`;
+            }).join('');
+
+            poolResultsContent.innerHTML = `
+                <table class="w-full mb-4">
+                    <thead><tr class="border-b text-left text-slate-600 text-sm">
+                        <th class="py-2 px-1">#</th><th class="py-2 px-1">Joueur</th>
+                        <th class="py-2 px-1 text-center">Pts</th><th class="py-2 px-1 text-center">GA</th>
+                        <th class="py-2 px-1 text-center">Joués</th>
+                    </tr></thead>
+                    <tbody>${rankingRows}</tbody>
+                </table>
+                <div class="space-y-2">${matchesHtml || '<p class="text-sm text-slate-400">Aucun match joué.</p>'}</div>
+            `;
+
+            poolResultsModal.classList.remove('hidden');
+            setTimeout(() => {
+                poolResultsModal.classList.remove('opacity-0');
+                poolResultsModalPanel.classList.remove('opacity-0', 'scale-95');
+            }, 10);
+        }
+
+        function closePoolResultsModal() {
+            poolResultsModal.classList.add('opacity-0');
+            poolResultsModalPanel.classList.add('opacity-0', 'scale-95');
+            setTimeout(() => poolResultsModal.classList.add('hidden'), 300);
+        }
+
         // --- LISTENERS ---
+        roleTeacherButton.addEventListener('click', () => chooseRole('teacher'));
+        roleStudentButton.addEventListener('click', () => chooseRole('student'));
+        setupChangeRoleButton.addEventListener('click', changeRole);
+        mainChangeRoleButton.addEventListener('click', changeRole);
+        teacherChangeRoleButton.addEventListener('click', changeRole);
+
+        scanPoolQrButton.addEventListener('click', () => openQrScanModal('Scanner le QR de ma poule', applyPoolSetupPayload));
+        showResultsQrButton.addEventListener('click', showResultsQrForTeacher);
+
+        teacherPoolPlayerCountSelect.addEventListener('change', updateTeacherPoolNameInputs);
+        teacherAddPoolButton.addEventListener('click', addTeacherPool);
+        teacherScanResultsButton.addEventListener('click', () => openQrScanModal("Scanner les résultats d'une poule", applyPoolResultsPayload));
+        teacherResetButton.addEventListener('click', resetTeacherApp);
+        teacherManualBackButton.addEventListener('click', exitManualResultsEntry);
+        teacherManualResetButton.addEventListener('click', resetManualResultsEntry);
+
+        qrDisplayCloseButton.addEventListener('click', closeQrDisplayModal);
+        qrScanCancelButton.addEventListener('click', closeQrScanModal);
+        poolResultsCloseButton.addEventListener('click', closePoolResultsModal);
+        poolResultsModal.addEventListener('click', (e) => { if (e.target === poolResultsModal) closePoolResultsModal(); });
+
         playerCountSelect.addEventListener('change', updatePlayerInputs);
         startButton.addEventListener('click', startTournament);
         resetButton.addEventListener('click', resetApp);
@@ -1132,12 +2194,16 @@
             }
             setTimeout(() => { copyScoreboardButton.title = originalTitle; }, 1500);
         });
-        copyResultsButton.addEventListener('click', onCopyResultsClick);
+        copyResultsButton.addEventListener('click', openCarnetChoiceModal);
+        carnetChoiceOpenButton.addEventListener('click', onOpenCarnetClick);
+        carnetChoiceSaveButton.addEventListener('click', onSaveForLaterClick);
+        carnetChoiceCancelButton.addEventListener('click', closeCarnetChoiceModal);
+        carnetChoiceModal.addEventListener('click', (e) => { if (e.target === carnetChoiceModal) closeCarnetChoiceModal(); });
 
         modalCancelButton.addEventListener('click', closeScoreModal);
         modalConfirmButton.addEventListener('click', handleScoreSubmission);
         scoreModal.addEventListener('click', (e) => { if (e.target === scoreModal) closeScoreModal(); });
-        
+
         statsModal.addEventListener('click', (e) => { if (e.target === statsModal) closeStatsModal(); });
         statsModalCloseButton.addEventListener('click', closeStatsModal);
         
@@ -1147,7 +2213,7 @@
         document.addEventListener('click', (e) => {
             const btn = e.target.closest('button');
             if (!btn) return;
-            const { action, matchId, playerName } = btn.dataset;
+            const { action, matchId, playerName, teacherAction, poolId } = btn.dataset;
             if (action === 'score') openScoreModal(matchId);
             if (action === 'edit') openScoreModal(matchId);
             if (action === 'stats') openStatsModal(playerName);
@@ -1155,10 +2221,13 @@
                 justFinishedMatchId = null;
                 renderAll();
             }
+            if (teacherAction === 'show-qr') showPoolSetupQr(poolId);
+            if (teacherAction === 'manual-results') startManualResultsEntry(poolId);
+            if (teacherAction === 'view-results') openPoolResultsModal(poolId);
+            if (teacherAction === 'delete-pool') deleteTeacherPool(poolId);
         });
 
-        loadState();
+        initApp();
     </script>
-    <script src="eps-poules.js"></script>
 </body>
 </html>

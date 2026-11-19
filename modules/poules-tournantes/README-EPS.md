@@ -1,28 +1,27 @@
 # Poules tournantes dans EPS Manager
 
-Copie de l'application du dépôt `Ambroise-pro/poulestournante` (commit `247ec42`), branchée sur le kit SDK 1.0.
+Copie de la branche `main` du dépôt `Ambroise-pro/poulestournante` (commit `5aa2c6d`, « Make the app an EPS Manager module
+(teacher-side only) »). L'intégration avec EPS Manager est celle de ce dépôt : elle n'est pas modifiée ici.
 
-## Données envoyées à EPS Manager (choix de l'enseignant)
+## Données envoyées à EPS Manager (définies dans le dépôt de l'application)
 
-- **Classement par élève** → résultat dans la séance et la fiche élève :
-  « Poules tournantes · Poule 1 » : « 2e / 8 · 13 pts · +7 · 5 matchs ».
-- **Résumé de la poule** → résumé dans la séance de la classe : classement complet.
-- Rien d'autre (aucune note sur 20). Envoi à chaque score saisi, corrigé ou annulé ; clés stables
-  (`poules:<identifiant de la poule>:<élève>`) : pas de doublon. Plusieurs poules dans la même séance sont numérotées.
+Quand une poule est **terminée** (tous ses matchs joués, saisis à la main ou reçus par QR code), pour chaque élève choisi
+dans une classe d'EPS Manager : trois résultats dans la séance du jour — « Poules tournantes · Classement » (ex. `2e/8`),
+« Poules tournantes · Points », « Poules tournantes · Goal average » — et un résumé de la poule pour la classe.
+Aucune note sur 20. Clés stables `poulestournante:<poule>:…` : pas de doublon. Un élève saisi à la main (sans classe) n'est pas envoyé.
 
-## Fonctionnement
-
-- Ouverte depuis EPS Manager, l'écran de configuration affiche la classe (celle de la séance) : on coche les 6 à 9 joueurs
-  de la poule (absents et inaptes signalés). Les noms affichés sont les prénoms (initiale du nom en cas d'homonyme).
-- Si les noms sont modifiés à la main après avoir coché, la poule n'est pas reliée à EPS Manager (aucun envoi).
-- Hors d'EPS Manager, l'application fonctionne exactement comme avant (saisie libre des noms).
-
-## Différences avec l'original
+## Différences avec le dépôt
 
 | Fichier | Changement |
 |---|---|
-| `index.html` | Tailwind chargé depuis `tailwind.css` (local) au lieu du CDN ; ajout de `eps-sdk.js` et `eps-poules.js`. Rien d'autre. |
-| `tailwind.css` | Généré : `npx tailwindcss@3.4.17 -i in.css -o tailwind.css --content "./index.html,./eps-poules.js" --minify` (in.css = les 3 directives `@tailwind`). À régénérer si des classes sont ajoutées. |
-| `eps-poules.js` | Liaison EPS Manager (inactive hors EPS Manager). |
-| `eps-sdk.js`, `eps-adapter.js` | Kit EPS Manager, copiés sans modification. |
-| `script.js`, `styles.css` | Non repris (ancienne version, non chargée par `index.html`). |
+| `index.html` | Seules 3 lignes changent : Tailwind, `qrcode-generator` et `html5-qrcode` chargés en local au lieu des CDN (fonctionne hors connexion). |
+| `tailwind.css` | Généré : `npx tailwindcss@3.4.17 -i in.css -o tailwind.css --content "./index.html" --minify` (in.css = les 3 directives `@tailwind`). À régénérer après une mise à jour d'`index.html`. |
+| `vendor/qrcode.js` | `qrcode-generator@1.4.4` (licence MIT), fichier du paquet npm, identique à celui du CDN. |
+| `vendor/html5-qrcode.min.js` | `html5-qrcode@2.3.8` (licence Apache-2.0), fichier du paquet npm, identique à celui du CDN. |
+| `eps-sdk.js`, `eps-adapter.js`, `eps-module.json` | Identiques au dépôt. |
+| `script.js`, `styles.css` | Non repris (non chargés par `index.html`). |
+
+## Mettre à jour
+
+Recopier `index.html` (et `eps-module.json`) depuis la branche `main` du dépôt, refaire les 3 remplacements de lignes,
+régénérer `tailwind.css`, puis `node tools/offline-list.mjs` à la racine d'EPS Manager et lancer les tests.
