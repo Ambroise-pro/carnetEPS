@@ -1,6 +1,6 @@
 // Numéro de version affiché dans l'application : l'incrémenter à chaque nouvelle livraison
 // (et le reporter dans sw.js pour renouveler le cache hors ligne).
-const APP_VERSION=6;
+const APP_VERSION=7;
 
 // ---------- Structure de l'application ----------
 const pages={home:'Tableau de bord',calendar:'Calendrier',sessions:'Séances',attendance:'Appel',classes:'Classes',students:'Élèves',groups:'Groupes',cycles:'Cycles',restrictions:'Inaptitudes',grades:'Évaluations',comments:'Appréciations',observations:'Observations',planning:'Paramètres du calendrier',absences:'Absences',settings:'Paramètres',student:'Fiche élève',session:'Séance',boards:'Tableaux',board:'Tableau',module:'Module',years:'Années scolaires',backup:'Sauvegardes'};
@@ -1177,7 +1177,7 @@ async function sampleBoard(){
 //      collect(ctx)    : renvoie {grades, results, summaries, studentUpdates} (voir importModuleData).
 // La liste des dossiers vient de modules/modules.json et des dossiers ajoutés dans Réglages › Paramètres.
 // L'application principale ne contient rien de spécifique à un module.
-let modules=[],modulesReady=null,openModule=null,moduleTimer=null;
+let modules=[],modulesReady=null,openModule=null,moduleTimer=null,moduleFocus=null;
 const moduleSync={};
 const moduleNameOk=n=>/^[a-z0-9][a-z0-9_-]{0,63}$/i.test(n);
 function extraModules(){return (settings().modules||'').split(',').map(s=>s.trim()).filter(moduleNameOk)}
@@ -1187,13 +1187,13 @@ async function discoverModules(){
  const names=[...new Set([...listed,...extraModules()])].filter(moduleNameOk),found=[];
  for(const id of names){
   try{const r=await fetch('modules/'+id+'/eps-module.json',{cache:'no-cache'});if(!r.ok)throw Error();const m=await r.json();
-   found.push({id,base:'modules/'+id+'/',name:String(m.name||id),description:String(m.description||''),entry:String(m.entry||'index.html'),adapter:m.adapter?String(m.adapter):'',fromSettings:!listed.includes(id)});
+   found.push({id,base:'modules/'+id+'/',name:String(m.name||id),description:String(m.description||''),entry:String(m.entry||'index.html'),adapter:m.adapter?String(m.adapter):'',classChoice:!!m.classChoice,fromSettings:!listed.includes(id)});
   }catch{found.push({id,base:'modules/'+id+'/',name:id,missing:true,fromSettings:!listed.includes(id)})}
  }
  modules=found;return found;
 }
 function moduleContext(m){
- return {module:{id:m.id,name:m.name},base:new URL(m.base,location.href).href,today:today(),
+ return {module:{id:m.id,name:m.name},base:new URL(m.base,location.href).href,today:today(),focus:moduleFocus?{...moduleFocus}:null,
   classes:data.classes.map(c=>({id:c.id,name:c.name,students:pupilsOf(c.id).map(p=>({id:p.id,first:p.first,last:p.last,sex:p.sex||'',photo:p.photo||''}))})),
   sessions:data.sessions.filter(active).map(s=>({id:s.id,classId:s.classId,date:s.date,time:s.time||'',duration:s.duration||'',title:sessionTitle(s)}))};
 }
@@ -1241,7 +1241,7 @@ async function syncModule(m,{quiet=false}={}){
 }
 async function syncAllModules(){await modulesReady;let changed=0;for(const m of modules){const r=await syncModule(m,{quiet:true});changed+=r?.changed||0}return changed}
 function leaveModule(){
- clearInterval(moduleTimer);moduleTimer=null;document.body.classList.remove('module-mode');
+ clearInterval(moduleTimer);moduleTimer=null;document.body.classList.remove('module-mode');moduleFocus=null;
  if(openModule){const m=openModule;openModule=null;syncModule(m).then(r=>{if(r?.changed)render()})}
 }
 async function renderModule(id){
@@ -1254,6 +1254,9 @@ async function renderModule(id){
  const bar=el('div','',view,'module-bar');
  link(bar,sessionReturn||'home','← EPS Manager','btn small');
  el('strong',m.name,bar);
+ // Module qui travaille classe par classe : choix de la classe (celle de la séance si on vient d'une fiche séance).
+ let pick=null;
+ if(m.classChoice&&data.classes.length){pick=select(el('label','',bar,'module-class'),data.classes.map(c=>[c.id,c.name]),'Choisir une classe…');pick.setAttribute('aria-label','Classe');pick.value=moduleFocus?.classId||''}
  const status=el('span','Préparation des classes…',bar,'muted');
  const sync=button('Synchroniser',bar,'small primary');
  const frame=el('iframe','',view,'module-frame');frame.title=m.name;frame.setAttribute('allow','camera; microphone; fullscreen; clipboard-write');
@@ -1262,12 +1265,15 @@ async function renderModule(id){
  try{const a=await adapterOf(m);if(a?.beforeOpen)await a.beforeOpen(moduleContext(m))}catch{notify('Les classes n’ont pas pu être recopiées dans '+m.name+'.')}
  if(!frame.isConnected)return;
  frame.src=m.base+m.entry;openModule=m;refresh();
+ if(pick)pick.onchange=async()=>{moduleFocus=pick.value?{classId:pick.value}:null;status.textContent='Préparation de la classe…';
+  try{const a=await adapterOf(m);if(a?.beforeOpen)await a.beforeOpen(moduleContext(m))}catch{}
+  frame.src=m.base+m.entry+'?t='+Date.now();refresh()};
  moduleTimer=setInterval(async()=>{if(!frame.isConnected)return;await syncModule(m,{quiet:true});refresh()},20000);
 }
 let sessionReturn='';
 function moduleButtons(parent,s){
  const usable=modules.filter(m=>!m.missing);
- for(const m of usable){const a=link(parent,'module='+m.id,'Ouvrir '+m.name,'btn');a.onclick=()=>{sessionReturn='session='+s.id}}
+ for(const m of usable){const a=link(parent,'module='+m.id,'Ouvrir '+m.name,'btn');a.onclick=()=>{sessionReturn='session='+s.id;moduleFocus={classId:s.classId,sessionId:s.id}}}
 }
 function renderModulesSettings(){
  const p=panel(view,'Modules');

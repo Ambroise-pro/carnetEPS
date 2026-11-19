@@ -1,0 +1,8 @@
+{
+  "name": "Co-évaluation Bac",
+  "description": "Musculation CA5 : préparer, évaluer l'AFL1, croiser avec le co-évaluateur et valider les notes.",
+  "entry": "index.html",
+  "adapter": "eps-adapter.js",
+  "classChoice": true,
+  "source": "https://github.com/Ambroise-pro/coeval"
+}

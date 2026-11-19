@@ -13,6 +13,9 @@ EPS Manager l'ouvre en plein écran, lui transmet les classes et récupère ses 
    { "name": "Demi-fond", "entry": "index.html", "adapter": "eps-adapter.js", "description": "…" }
    ```
 
+   Option : `"classChoice": true` pour un module qui travaille classe par classe. Une liste des classes
+   s'affiche alors dans la barre du module ; ouvert depuis une fiche séance, il reçoit la classe de la séance.
+
 3. Déclarer le dossier, au choix :
    - en ajoutant son nom dans `modules/modules.json` (ex. `["demi-fond", "mon-module"]`) ;
    - ou dans l'application : Réglages › Paramètres › Modules › « Ajouter un module ».
@@ -30,6 +33,7 @@ ctx = {
   module: { id, name },
   base: 'https://…/modules/<dossier>/',
   today: 'AAAA-MM-JJ',
+  focus: { classId, sessionId } | null,   // classe choisie ou séance d'où le module est ouvert
   classes: [{ id, name, students: [{ id, first, last, sex: 'F' | 'G' | '', photo }] }],
   sessions: [{ id, classId, date, time, duration, title }]
 }
