@@ -377,15 +377,27 @@ function rowSlider(ev, s, r, m, disabled) {
   DEGREES.forEach(d => { const i = opts.map((o, k) => o.deg === d ? k : -1).filter(k => k >= 0); if (!i.length) return;
     const a = i[0] ? (pos(i[0] - 1) + pos(i[0])) / 2 : 0, b = i.at(-1) < opts.length - 1 ? (pos(i.at(-1)) + pos(i.at(-1) + 1)) / 2 : 100;
     stops.push(`var(--d${d}) ${a}%`, `var(--d${d}) ${b}%`); });
-  const text = o => o ? 'Degré ' + o.deg + ' · ' + fmt(o.pts) + ' pt' + (o.pts > 1 ? 's' : '') : 'Glisser pour évaluer';
-  const label = h('output', {class: 'sl-value' + (idx < 0 ? ' unset' : '')}, text(opts[idx]));
+  const text = o => o ? 'Degré ' + o.deg + ', ' + fmt(o.pts) + ' point' + (o.pts > 1 ? 's' : '') : 'non évalué';
   const input = h('input', {type: 'range', min: 0, max: Math.max(0, opts.length - 1), step: 1, value: Math.max(0, idx), disabled,
     class: idx < 0 ? 'unset' : '', style: `--track:linear-gradient(90deg,${stops.join(',')})`,
     'aria-label': (r.label || 'Ligne') + ' : degré et points', 'aria-valuetext': text(opts[idx])});
+  // Bulle des points, au-dessus du curseur
+  const bubble = h('span', {class: 'sl-bubble', 'aria-hidden': 'true', hidden: idx < 0});
+  const marks = h('div', {class: 'sl-marks', 'aria-hidden': 'true'}, ...DEGREES.map(d => { const i = opts.findIndex(o => o.deg === d); return i < 0 ? null : h('span', {style: `left:${pos(i)}%`, 'data-deg': d}, 'D' + d); }));
+  const show = i => {
+    const o = opts[i]; if (!o) return;
+    bubble.hidden = false; bubble.textContent = fmt(o.pts);
+    bubble.style.left = `calc(16px + (100% - 32px) * ${pos(i) / 100})`;
+    for (const sp of marks.children) sp.classList.toggle('on', Number(sp.dataset.deg) === o.deg);
+    // Surbrillance de la case du degré pendant le glissement
+    const row = input.closest('.eg-row');
+    row?.querySelectorAll('.eg-cell').forEach((c, k) => c.classList.toggle('on', k === o.deg - 1));
+    const lbl = row?.querySelector('.eg-label .small'); if (lbl) lbl.textContent = fmt(o.pts) + ' / ' + fmt(rowMax(r)) + ' pts';
+  };
   const apply = () => {
     const o = opts[Number(input.value)]; if (!o) return;
     markOf(ev, s.id).rows[r.id] = {deg: o.deg, pts: o.pts}; ev.marks[s.id].updatedAt = Date.now(); save();
-    input.classList.remove('unset'); label.classList.remove('unset'); label.textContent = text(o); input.setAttribute('aria-valuetext', text(o));
+    input.classList.remove('unset'); input.setAttribute('aria-valuetext', text(o)); show(Number(input.value));
     const sc = scoreOf(ev, ev.marks[s.id]), t = document.getElementById('liveTotal');
     if (t && !sc.status) { t.querySelector('.note').textContent = fmt(sc.max ? sc.sum / sc.max * 20 : null) + ' / 20'; t.querySelector('.muted').textContent = fmt(sc.sum) + ' / ' + fmt(sc.max) + ' pts' + (sc.complete ? '' : ' · ' + sc.done + ' ligne' + (sc.done > 1 ? 's' : '') + ' sur ' + sc.rows); }
   };
@@ -393,8 +405,9 @@ function rowSlider(ev, s, r, m, disabled) {
   input.onchange = () => { apply(); render(); };
   // Un simple toucher sur un curseur encore vide choisit la valeur touchée
   input.onpointerup = () => { if (input.classList.contains('unset')) { apply(); render(); } };
-  const marks = h('div', {class: 'sl-marks', 'aria-hidden': 'true'}, ...DEGREES.map(d => { const i = opts.findIndex(o => o.deg === d); return i < 0 ? null : h('span', {style: `left:${pos(i)}%`}, 'D' + d); }));
-  return h('div', {class: 'eg-slider'}, h('div', {class: 'sl-track'}, input, marks), label);
+  const wrap = h('div', {class: 'eg-slider'}, h('div', {class: 'sl-track'}, bubble, input, marks));
+  if (idx >= 0) requestAnimationFrame(() => show(idx));
+  return wrap;
 }
 function touch(ev, sid) { ev.marks[sid].updatedAt = Date.now(); save(); render(); }
 
