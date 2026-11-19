@@ -124,3 +124,16 @@ dialog .actions{justify-content:flex-end}
 .toast{position:fixed;left:50%;bottom:20px;transform:translate(-50%,20px);background:var(--ink);color:#fff;padding:12px 18px;border-radius:14px;opacity:0;pointer-events:none;transition:.2s;margin:0;max-width:calc(100% - 32px)}
 .toast.show{opacity:1;transform:translate(-50%,0)}
 @media (max-width:700px){.students{position:static;max-height:220px}}
+.tag{display:inline-block;font-size:11px;font-weight:700;padding:2px 7px;border-radius:999px;vertical-align:middle;background:#eef2ec}
+.tag.warn{background:var(--warn-bg);color:var(--warn-ink)}
+.tag.bad{background:#f8d7d3;color:#7a1f17}
+.notice{display:flex;flex-wrap:wrap;align-items:center;gap:10px}
+.notice.bad{background:#f8d7d3;color:#7a1f17}
+.notice button.small{min-height:36px;padding:0 12px;font-size:14px}
+.linked{color:var(--primary);font-weight:600}
+.perf-tables{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(min(380px,100%),1fr))}
+.perf-edit td{padding:4px 6px}.perf-edit input{min-height:40px}
+.perf-edit button{min-height:36px;min-width:36px;padding:0}
+.perf-eval td,.perf-eval th{vertical-align:middle}
+.perf-eval input{max-width:140px}.perf-eval select{width:auto;min-width:70px}
+.perf-eval tbody tr{cursor:default}

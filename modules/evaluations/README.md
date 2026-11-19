@@ -11,6 +11,20 @@ Grilles d'évaluation par degrés, note sur 20.
 - Le barème est la somme des maxima de chaque ligne ; la note est ramenée sur 20.
 - « Partir d'un exemple » propose une grille de badminton à adapter. « Enregistrer la grille » la sauvegarde.
 
+## Barème de performance
+- « + Barème de performance » (ou « Exemple de barème ») : temps (min:s), distance ou points convertis en note,
+  avec un barème filles et un barème garçons (paliers performance → note, note sur …, arrondi).
+- Entre deux paliers, la note est calculée proportionnellement ; au-delà du meilleur palier, la note maximale.
+- Évaluation : toute la classe dans un tableau (sexe repris d'EPS Manager, modifiable), note en direct, export CSV.
+
+## Grille liée au cycle
+- L'« Activité » d'une grille ou d'un barème la lie aux cycles du même nom dans EPS Manager (« Badminton »).
+- Pour chaque cycle en cours ou à venir, l'évaluation finale est créée automatiquement à la date de la dernière séance.
+- Ouverte depuis une séance qui a une évaluation (classe et date), l'application l'ouvre directement.
+
+## En direct depuis EPS Manager
+- Inaptitude en cours et statut à l'appel du jour affichés sur les élèves (raccourcis « Dispensé », « Marquer absent »).
+
 ## Grilles au format Excel
 - « Télécharger le modèle Excel » : un fichier avec une grille d'exemple (feuille « Grille ») et une feuille « Mode d'emploi ».
   Le collègue remplit : nom, activité, modulation, puis une ligne par ligne de la grille avec, pour chaque degré,

@@ -1,8 +1,8 @@
 {
   "name": "Évaluations",
-  "description": "Grilles par degrés (1 à 4) : critères et points par case, note sur 20 élève par élève.",
+  "description": "Grilles par degrés et barèmes de performance (filles / garçons), note sur 20, liées aux cycles.",
   "entry": "index.html",
   "adapter": "eps-adapter.js",
   "classChoice": true,
-  "version": "2.0"
+  "version": "3.0"
 }

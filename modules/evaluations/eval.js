@@ -33,7 +33,7 @@ function save() {
   catch { toast('Enregistrement impossible : le stockage de l’appareil est plein.'); return false; }
 }
 // EPS Manager peut mettre à jour les classes pendant que le module est ouvert (autre onglet ou nouvelle ouverture).
-window.addEventListener('storage', e => { if (e.key === KEY) { db = load(); render(); } });
+window.addEventListener('storage', e => { if (e.key === KEY || e.key === CTX_KEY) { db = load(); applyCtx(); if (ensureCycleEvals()) save(); render(); } });
 
 const classOf = id => db.classes.find(c => c.id === id);
 const studentName = s => s.last.toLocaleUpperCase('fr') + ' ' + s.first;
@@ -51,7 +51,8 @@ function cellSteps(c, step) {
   return [...new Set(out)];
 }
 // Note d'un élève : null si absent / dispensé ; complète quand chaque ligne a une case choisie.
-function scoreOf(ev, mark) {
+function scoreOf(ev, mark, student) {
+  if (ev.grid.type === 'perf') return perfScore(ev, mark, student);
   const g = ev.grid, max = gridMax(g);
   if (!mark || mark.status) return {sum: 0, max, done: 0, rows: g.rows.length, complete: false, note: null, status: mark?.status || ''};
   let sum = 0, done = 0;
@@ -86,7 +87,7 @@ function go(next) { screen = next; render(); window.scrollTo(0, 0); }
 
 function render() {
   app.replaceChildren();
-  if (screen.name === 'grid') return renderGridEditor();
+  if (screen.name === 'grid') return screen.draft.type === 'perf' ? renderPerfEditor() : renderGridEditor();
   if (screen.name === 'eval') return renderEval();
   renderHome();
 }
@@ -119,6 +120,8 @@ function renderGrids() {
   const bar = h('div', {class: 'toolbar'},
     h('button', {type: 'button', class: 'primary', onclick: () => go({name: 'grid', draft: newGrid(), isNew: true})}, '+ Nouvelle grille'),
     h('button', {type: 'button', onclick: () => go({name: 'grid', draft: sampleGrid(), isNew: true})}, 'Partir d’un exemple'),
+    h('button', {type: 'button', onclick: () => go({name: 'grid', draft: newPerf(), isNew: true})}, '+ Barème de performance'),
+    h('button', {type: 'button', onclick: () => go({name: 'grid', draft: samplePerf(), isNew: true})}, 'Exemple de barème'),
     h('button', {type: 'button', onclick: () => picker.click()}, 'Importer une grille Excel'),
     h('button', {type: 'button', onclick: () => exportGrids([{...sampleGrid(), name: 'Nom de la grille (à remplacer)'}], 'Modele_grille_evaluation.xlsx')}, 'Télécharger le modèle Excel'));
   const picker = h('input', {type: 'file', accept: '.xlsx,.xls,.ods,.csv', hidden: true, onchange: e => { importGrids(e.target.files[0]); e.target.value = ''; }});
@@ -130,11 +133,12 @@ function renderGrids() {
     const used = db.evals.filter(e => e.gridId === g.id).length;
     list.append(h('article', {class: 'card'},
       h('h3', {}, g.name || 'Grille sans nom'),
-      h('p', {class: 'muted'}, [g.activity, g.rows.length + ' ligne' + (g.rows.length > 1 ? 's' : ''), 'barème sur ' + fmt(gridMax(g)) + ' pts', used ? used + ' évaluation' + (used > 1 ? 's' : '') : ''].filter(Boolean).join(' · ')),
+      h('p', {class: 'muted'}, (g.type === 'perf' ? [g.activity, 'barème de performance', PERF_UNITS[g.unit], 'filles et garçons'] : [g.activity, g.rows.length + ' ligne' + (g.rows.length > 1 ? 's' : ''), 'barème sur ' + fmt(gridMax(g)) + ' pts']).concat(used ? used + ' évaluation' + (used > 1 ? 's' : '') : '').filter(Boolean).join(' · ')),
+      (() => { const cys = (db.cycles || []).filter(cy => gridForCycle(cy) === g); return cys.length ? h('p', {class: 'small linked'}, 'Liée aux cycles : ' + [...new Set(cys.map(c => c.name))].join(', ') + ' (' + [...new Set(cys.map(c => classOf(c.classId)?.name).filter(Boolean))].join(', ') + ')') : null; })(),
       h('div', {class: 'actions'},
         h('button', {type: 'button', class: 'primary', onclick: () => assignDialog(g)}, 'Évaluer une classe'),
         h('button', {type: 'button', onclick: () => go({name: 'grid', draft: clone(g)})}, 'Modifier'),
-        h('button', {type: 'button', onclick: () => exportGrids([g], fileName(g.name) + '.xlsx')}, 'Exporter en Excel'),
+        g.type === 'perf' ? null : h('button', {type: 'button', onclick: () => exportGrids([g], fileName(g.name) + '.xlsx')}, 'Exporter en Excel'),
         h('button', {type: 'button', onclick: () => { const c = {...clone(g), id: uid(), name: (g.name || 'Grille') + ' (copie)', createdAt: Date.now(), updatedAt: Date.now()}; db.grids.push(c); save(); render(); toast('Grille dupliquée.'); }}, 'Dupliquer'),
         h('button', {type: 'button', class: 'danger', onclick: () => { if (!confirm(`Supprimer la grille « ${g.name || 'sans nom'} » ? Les évaluations déjà faites restent disponibles.`)) return; db.grids = db.grids.filter(x => x !== g); save(); render(); }}, 'Supprimer'))));
   }
@@ -151,7 +155,7 @@ function assignDialog(grid) {
   dialog('Nouvelle évaluation', h('div', {class: 'form'},
     h('label', {}, 'Grille', grids), h('label', {}, 'Classe', cls), h('label', {}, 'Titre', title), h('label', {}, 'Date', date)),
   close => [h('button', {type: 'button', onclick: close}, 'Annuler'), h('button', {type: 'button', class: 'primary', onclick: () => {
-    const g = db.grids.find(x => x.id === grids.value); if (!g || !g.rows.length) return toast('Choisissez une grille avec au moins une ligne.');
+    const g = db.grids.find(x => x.id === grids.value); if (!g || (g.type !== 'perf' && !g.rows.length)) return toast('Choisissez une grille avec au moins une ligne.');
     const ev = {id: uid(), gridId: g.id, grid: clone(g), classId: cls.value, title: title.value.trim() || g.name || 'Évaluation', date: date.value || today(), createdAt: Date.now(), marks: {}};
     db.evals.push(ev); db.ui.tab = 'evals'; save(); close(); go({name: 'eval', id: ev.id});
   }}, 'Commencer')]);
@@ -166,10 +170,11 @@ function renderEvals() {
   if (!evs.length) { app.append(h('p', {class: 'empty'}, db.grids.length ? 'Aucune évaluation pour le moment. Choisissez une grille et une classe.' : 'Créez d’abord une grille dans « Mes grilles ».')); return; }
   const list = h('div', {class: 'cards'});
   for (const ev of evs) {
-    const st = studentsOf(ev.classId), scores = st.map(s => scoreOf(ev, ev.marks[s.id])), done = scores.filter(s => s.complete);
+    const st = studentsOf(ev.classId), scores = st.map(s => scoreOf(ev, ev.marks[s.id], s)), done = scores.filter(s => s.complete);
     const avg = done.length ? done.reduce((a, s) => a + s.note, 0) / done.length : null;
     list.append(h('article', {class: 'card clickable', onclick: () => go({name: 'eval', id: ev.id})},
       h('h3', {}, ev.title),
+      ev.cycleId ? h('p', {class: 'small linked'}, 'Évaluation finale du cycle ' + (ev.cycleName || '') + ' · dernière séance') : null,
       h('p', {class: 'muted'}, [classOf(ev.classId)?.name || 'Classe supprimée', dayLabel(ev.date), done.length + ' / ' + st.length + ' élèves notés', avg != null ? 'moyenne ' + fmt(avg) + ' / 20' : ''].filter(Boolean).join(' · ')),
       h('div', {class: 'progress'}, h('i', {style: `width:${st.length ? done.length / st.length * 100 : 0}%`}))));
   }
@@ -264,7 +269,7 @@ function renderGridEditor() {
     h('div', {class: 'actions'}, h('button', {type: 'button', class: 'primary', onclick: saveGrid}, 'Enregistrer la grille'))));
   app.append(h('section', {class: 'panel form row3'},
     h('label', {}, 'Nom de la grille', h('input', {value: g.name, placeholder: 'ex. Badminton · match', oninput: e => { g.name = e.target.value; }})),
-    h('label', {}, 'Activité', h('input', {value: g.activity, placeholder: 'ex. Badminton', oninput: e => { g.activity = e.target.value; }})),
+    h('label', {}, 'Activité (lie la grille aux cycles du même nom)', h('input', {value: g.activity, placeholder: 'ex. Badminton', oninput: e => { g.activity = e.target.value; }})),
     h('label', {}, 'Modulation des points', h('select', {onchange: e => { g.step = e.target.value; }}, ...STEPS.map(([v, l]) => h('option', {value: v, selected: String(g.step) === v}, 'par ' + l))))));
   app.append(h('p', {class: 'muted help'}, 'Dans chaque case : les critères, puis les points de « min » à « max ». En évaluant, toucher la case donne le maximum ; on peut ensuite descendre jusqu’au minimum, par pas de ' + (STEPS.find(s => s[0] === String(g.step))?.[1] || '0,5 point') + '. Le degré 1 est le plus faible, le degré 4 le meilleur.'));
   const table = h('div', {class: 'grid-edit'});
@@ -296,7 +301,8 @@ function renderGridEditor() {
     g.updatedAt = Date.now();
     const i = db.grids.findIndex(x => x.id === g.id);
     if (i < 0) db.grids.push(g); else db.grids[i] = g;
-    if (save()) { toast('Grille enregistrée.'); go({name: 'home'}); }
+    const n = ensureCycleEvals();
+    if (save()) { toast('Grille enregistrée.' + (n ? ' Évaluation finale créée pour ' + n + ' cycle' + (n > 1 ? 's' : '') + ' lié' + (n > 1 ? 's' : '') + '.' : '')); go({name: 'home'}); }
   }
 }
 
@@ -305,22 +311,24 @@ function renderEval() {
   const ev = db.evals.find(e => e.id === screen.id);
   if (!ev) return go({name: 'home'});
   const students = studentsOf(ev.classId);
-  if (!screen.student || !students.some(s => s.id === screen.student)) screen.student = students.find(s => !scoreOf(ev, ev.marks[s.id]).complete && !ev.marks[s.id]?.status)?.id || students[0]?.id;
+  if (!screen.student || !students.some(s => s.id === screen.student)) screen.student = students.find(s => !scoreOf(ev, ev.marks[s.id], s).complete && !ev.marks[s.id]?.status)?.id || students[0]?.id;
+  const perf = ev.grid.type === 'perf';
   app.append(h('header', {class: 'top'},
     h('div', {}, h('button', {type: 'button', class: 'link', onclick: () => go({name: 'home'})}, '← Évaluations'),
-      h('h1', {}, ev.title), h('p', {class: 'muted'}, [classOf(ev.classId)?.name, dayLabel(ev.date), 'barème ' + fmt(gridMax(ev.grid)) + ' pts → /20'].filter(Boolean).join(' · '))),
+      h('h1', {}, ev.title), h('p', {class: 'muted'}, [classOf(ev.classId)?.name, dayLabel(ev.date), perf ? 'barème de performance → /20' : 'barème ' + fmt(gridMax(ev.grid)) + ' pts → /20', ev.cycleId ? 'évaluation finale du cycle ' + (ev.cycleName || '') : ''].filter(Boolean).join(' · '))),
     h('div', {class: 'actions'},
-      h('button', {type: 'button', 'aria-pressed': String(!!screen.summary), onclick: () => { screen.summary = !screen.summary; render(); }}, screen.summary ? 'Retour à la saisie' : 'Bilan de la classe'),
+      perf ? h('button', {type: 'button', onclick: () => perfCSV(ev, students)}, 'Exporter en CSV') : h('button', {type: 'button', 'aria-pressed': String(!!screen.summary), onclick: () => { screen.summary = !screen.summary; render(); }}, screen.summary ? 'Retour à la saisie' : 'Bilan de la classe'),
       h('button', {type: 'button', class: 'danger', onclick: () => { if (!confirm('Supprimer cette évaluation et toutes ses notes ?')) return; db.evals = db.evals.filter(e => e !== ev); save(); go({name: 'home'}); }}, 'Supprimer'))));
   if (!students.length) { app.append(h('p', {class: 'empty'}, 'Cette classe n’a pas d’élèves. Ouvrez l’application depuis EPS Manager pour mettre à jour la liste.')); return; }
+  if (perf) return renderPerfEval(ev, students);
   if (screen.summary) return renderSummary(ev, students);
 
   const layout = h('div', {class: 'eval-layout'});
   const list = h('nav', {class: 'students', 'aria-label': 'Élèves'});
   for (const s of students) {
-    const sc = scoreOf(ev, ev.marks[s.id]);
+    const sc = scoreOf(ev, ev.marks[s.id], s);
     list.append(h('button', {type: 'button', class: 'student' + (s.id === screen.student ? ' on' : '') + (sc.complete ? ' done' : ''), onclick: () => { screen.student = s.id; render(); }},
-      h('span', {class: 'name'}, studentName(s)),
+      h('span', {class: 'name'}, studentName(s), ' ', ...liveTags(ev, s)),
       h('span', {class: 'score'}, sc.status ? STATUS[sc.status] : sc.complete ? fmt(sc.note) : sc.done ? sc.done + '/' + sc.rows : '')));
   }
   layout.append(list, studentPanel(ev, students));
@@ -334,6 +342,7 @@ function studentPanel(ev, students) {
   const panel = h('section', {class: 'student-panel'});
   panel.append(h('div', {class: 'sp-head'}, h('h2', {}, studentName(s)),
     h('div', {class: 'segmented small', role: 'group', 'aria-label': 'Situation'}, ...Object.entries(STATUS).map(([k, l]) => h('button', {type: 'button', 'aria-pressed': String((mark.status || '') === k), onclick: () => { markOf(ev, s.id).status = k; touch(ev, s.id); }}, l)))));
+  panel.append(...liveNotices(ev, s, mark, k => { markOf(ev, s.id).status = k; touch(ev, s.id); }));
   if (mark.status) panel.append(h('p', {class: 'notice'}, STATUS[mark.status] + ' : pas de note pour cette évaluation. Les points déjà saisis sont conservés.'));
   const grid = h('div', {class: 'eval-grid' + (mark.status ? ' disabled' : '')});
   grid.append(h('div', {class: 'eg-head'}, h('span', {}, ''), ...DEGREES.map(d => h('span', {class: 'deg d' + d}, 'Degré ' + d))));
@@ -412,7 +421,7 @@ function rowSlider(ev, s, r, m, disabled) {
 function touch(ev, sid) { ev.marks[sid].updatedAt = Date.now(); save(); render(); }
 
 function renderSummary(ev, students) {
-  const rows = students.map(s => ({s, sc: scoreOf(ev, ev.marks[s.id]), mark: ev.marks[s.id]}));
+  const rows = students.map(s => ({s, sc: scoreOf(ev, ev.marks[s.id], s), mark: ev.marks[s.id]}));
   const notes = rows.filter(r => r.sc.complete).map(r => r.sc.note);
   const avg = notes.length ? notes.reduce((a, b) => a + b, 0) / notes.length : null;
   app.append(h('div', {class: 'kpis'},
@@ -437,4 +446,165 @@ function renderSummary(ev, students) {
   }}, 'Exporter en CSV')));
 }
 
+/* ---------- Contexte d'EPS Manager : classes, cycles, infos en direct ----------
+   Écrit par eps-adapter.js dans une clé à part (jamais dans les données de l'application). */
+const CTX_KEY = 'eps-evaluations-context';
+function readCtx() { try { return JSON.parse(localStorage.getItem(CTX_KEY) || 'null'); } catch { return null; } }
+function applyCtx() {
+  const c = readCtx(); if (!c) return;
+  db.classes = c.classes || db.classes; db.cycles = c.cycles || [];
+  // Nouvelle ouverture depuis EPS Manager : classe et date de la séance mises en avant (une seule fois).
+  if (c.openedAt && c.openedAt !== db.ui.openedAt) {
+    db.ui.openedAt = c.openedAt; db.ui.focusClassId = c.focusClassId || ''; db.ui.focusDate = c.focusDate || '';
+    if (c.focusClassId) { db.ui.tab = 'evals'; screen = {name: 'home'}; }
+    db.ui.pendingOpen = c.focusClassId && c.focusDate ? c.focusClassId + '|' + c.focusDate : '';
+  }
+}
+const normTxt = v => String(v ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+// Grille liée à un cycle : son activité correspond au nom du cycle (« Badminton » ↔ « Badminton · match »).
+const gridForCycle = cy => { const n = normTxt(cy.name); return db.grids.find(g => g.activity && (n.includes(normTxt(g.activity)) || normTxt(g.activity).includes(n))); };
+// Évaluation finale créée pour chaque cycle en cours ou à venir dont l'activité a une grille, à la date de sa dernière séance.
+function ensureCycleEvals() {
+  const t = today(); let n = 0;
+  for (const cy of db.cycles || []) {
+    if (cy.end < t || !cy.sessions?.length || !classOf(cy.classId) || db.evals.some(e => e.cycleId === cy.id)) continue;
+    const g = gridForCycle(cy); if (!g) continue;
+    const last = cy.sessions.slice().sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time)).at(-1);
+    db.evals.push({id: uid(), gridId: g.id, grid: clone(g), classId: cy.classId, title: g.name || cy.name, date: last.date, cycleId: cy.id, cycleName: cy.name, auto: true, createdAt: Date.now(), marks: {}});
+    n++;
+  }
+  return n;
+}
+// À l'ouverture depuis une séance : l'évaluation de cette classe à cette date s'ouvre directement.
+function openPending() {
+  const p = db.ui.pendingOpen; if (!p) return; db.ui.pendingOpen = '';
+  const [cid, date] = p.split('|'), ev = db.evals.find(e => e.classId === cid && e.date === date);
+  if (ev) screen = {name: 'eval', id: ev.id};
+}
+function liveTags(ev, s) {
+  const out = [], isToday = ev.date === today();
+  if (s.inapt) out.push(h('span', {class: 'tag warn', title: s.inapt}, 'Inapt.'));
+  if (isToday && s.attendance && s.attendance !== 'Présent') out.push(h('span', {class: 'tag ' + (s.attendance === 'Absent' ? 'bad' : 'warn')}, s.attendance === 'Absent' ? 'Absent' : s.attendance));
+  return out;
+}
+function liveNotices(ev, s, mark, setStatus) {
+  const out = [], isToday = ev.date === today();
+  if (s.inapt) out.push(h('p', {class: 'notice'}, 'Inaptitude en cours : ' + s.inapt, !mark.status ? h('button', {type: 'button', class: 'small', onclick: () => setStatus('exempt')}, 'Dispensé') : null));
+  if (isToday && s.attendance === 'Absent') out.push(h('p', {class: 'notice bad'}, 'Absent à l’appel du jour.', !mark.status ? h('button', {type: 'button', class: 'small', onclick: () => setStatus('absent')}, 'Marquer absent') : null));
+  else if (isToday && ['Certificat médical', 'Mot des parents'].includes(s.attendance)) out.push(h('p', {class: 'notice'}, s.attendance + ' à l’appel du jour.', !mark.status ? h('button', {type: 'button', class: 'small', onclick: () => setStatus('exempt')}, 'Dispensé') : null));
+  return out;
+}
+
+/* ---------- Barème de performance : temps, distance ou points → note ----------
+   Un barème filles et un barème garçons ; entre deux paliers, la note est interpolée puis arrondie au pas choisi. */
+const PERF_UNITS = {time: 'Temps (min:s)', dist: 'Distance (m)', num: 'Nombre ou points'};
+function parsePerf(v, unit) {
+  const s = String(v ?? '').trim().replace(',', '.');
+  if (!s) return null;
+  if (unit === 'time') {
+    const m = s.match(/^(\d+)\s*(?:[:'’]|min|m)\s*(\d{1,2}(?:\.\d+)?)?\s*(?:''|"|s)?$/i);
+    if (m) return Number(m[1]) * 60 + Number(m[2] || 0);
+    const n = Number(s.replace(/s$/i, '')); return isFinite(n) ? n : null;
+  }
+  const n = Number(s); return isFinite(n) ? n : null;
+}
+function fmtPerf(x, unit) {
+  if (x == null) return '';
+  if (unit === 'time') { const m = Math.floor(x / 60), s = x - m * 60; return m + ':' + (s < 10 ? '0' : '') + String(Math.round(s * 10) / 10).replace('.', ','); }
+  return String(Math.round(x * 100) / 100).replace('.', ',');
+}
+function perfNote(g, sex, perf) {
+  const rows = (g.table?.[sex] || []).map(r => ({p: parsePerf(r.p, g.unit), n: num(r.n)})).filter(r => r.p != null).sort((a, b) => a.p - b.p);
+  if (perf == null || !rows.length) return null;
+  let n;
+  if (perf <= rows[0].p) n = rows[0].n; else if (perf >= rows.at(-1).p) n = rows.at(-1).n;
+  else { const i = rows.findIndex(r => r.p >= perf), a = rows[i - 1], b = rows[i]; n = a.n + (b.n - a.n) * (perf - a.p) / (b.p - a.p); }
+  const st = num(g.step) || 0.5; return Math.max(0, Math.round(n / st) * st);
+}
+const perfSex = (mark, s) => mark?.sex || (s?.sex === 'F' ? 'F' : s?.sex === 'G' ? 'G' : '');
+function perfScore(ev, mark, s) {
+  const g = ev.grid, max = num(g.max) || 20;
+  if (!mark || mark.status) return {complete: false, note: null, status: mark?.status || '', done: 0, rows: 1, sum: 0, max};
+  const perf = parsePerf(mark.perf, g.unit), sex = perfSex(mark, s), n = perf != null && sex ? perfNote(g, sex, perf) : null;
+  return {complete: n != null, note: n != null ? round(n / max * 20) : null, raw: n, perf, sex, status: '', done: perf != null ? 1 : 0, rows: 1, sum: n || 0, max, needSex: perf != null && !sex};
+}
+function samplePerf() {
+  const t = rows => rows.map(([p, n]) => ({p, n}));
+  return {id: uid(), type: 'perf', name: 'Demi-fond · 1000 m', activity: 'Demi-fond', unit: 'time', max: 20, step: '0.5', createdAt: Date.now(),
+    table: {F: t([['4:00', 20], ['4:30', 16], ['5:00', 12], ['5:30', 8], ['6:15', 4]]), G: t([['3:30', 20], ['4:00', 16], ['4:30', 12], ['5:00', 8], ['5:45', 4]])}};
+}
+function newPerf() { return {id: uid(), type: 'perf', name: '', activity: '', unit: 'time', max: 20, step: '0.5', createdAt: Date.now(), table: {F: [{p: '', n: 20}, {p: '', n: 10}], G: [{p: '', n: 20}, {p: '', n: 10}]}}; }
+const better = g => g.unit === 'time' ? 'Plus le temps est court, meilleure est la note.' : 'Plus la valeur est grande, meilleure est la note.';
+function renderPerfEditor() {
+  const g = screen.draft;
+  app.append(h('header', {class: 'top'},
+    h('div', {}, h('button', {type: 'button', class: 'link', onclick: () => { if (confirm('Quitter sans enregistrer les modifications ?')) go({name: 'home'}); }}, '← Mes grilles'), h('h1', {}, screen.isNew ? 'Nouveau barème de performance' : 'Modifier le barème')),
+    h('div', {class: 'actions'}, h('button', {type: 'button', class: 'primary', onclick: savePerf}, 'Enregistrer le barème'))));
+  app.append(h('section', {class: 'panel form row3'},
+    h('label', {}, 'Nom', h('input', {value: g.name, placeholder: 'ex. Demi-fond · 1000 m', oninput: e => { g.name = e.target.value; }})),
+    h('label', {}, 'Activité (lie le barème aux cycles du même nom)', h('input', {value: g.activity, placeholder: 'ex. Demi-fond', oninput: e => { g.activity = e.target.value; }})),
+    h('label', {}, 'Performance', h('select', {onchange: e => { g.unit = e.target.value; render(); }}, ...Object.entries(PERF_UNITS).map(([v, l]) => h('option', {value: v, selected: g.unit === v}, l)))),
+    h('label', {}, 'Note sur', h('input', {type: 'number', min: 1, step: 1, value: g.max, onchange: e => { g.max = num(e.target.value) || 20; }})),
+    h('label', {}, 'Arrondi de la note', h('select', {onchange: e => { g.step = e.target.value; }}, ...STEPS.map(([v, l]) => h('option', {value: v, selected: String(g.step) === v}, 'au ' + l + ' près'))))));
+  app.append(h('p', {class: 'muted help'}, 'Indiquez des paliers (performance → note). ' + better(g) + ' Entre deux paliers, la note est calculée proportionnellement ; au-delà du meilleur palier, la note maximale, en deçà du dernier, la note la plus basse.' + (g.unit === 'time' ? ' Temps au format 3:25 (minutes:secondes).' : '')));
+  const tables = h('div', {class: 'perf-tables'});
+  for (const [sex, title] of [['F', 'Filles'], ['G', 'Garçons']]) {
+    const rows = g.table[sex] ||= [];
+    const box = h('section', {class: 'panel'}, h('h2', {}, title));
+    const tb = h('table', {class: 'perf-edit'}, h('thead', {}, h('tr', {}, h('th', {}, PERF_UNITS[g.unit]), h('th', {}, 'Note /' + fmt(num(g.max) || 20)), h('th', {}, ''))));
+    const body = h('tbody');
+    rows.forEach((r, i) => body.append(h('tr', {},
+      h('td', {}, h('input', {value: r.p, inputMode: g.unit === 'time' ? 'text' : 'decimal', placeholder: g.unit === 'time' ? '3:25' : '4,5', 'aria-label': title + ' : performance ' + (i + 1), oninput: e => { r.p = e.target.value; }})),
+      h('td', {}, h('input', {type: 'number', step: 0.5, min: 0, value: r.n, 'aria-label': title + ' : note ' + (i + 1), oninput: e => { r.n = num(e.target.value); }})),
+      h('td', {}, h('button', {type: 'button', class: 'danger', 'aria-label': 'Supprimer le palier', onclick: () => { rows.splice(i, 1); render(); }}, '✕')))));
+    tb.append(body);
+    box.append(tb, h('div', {class: 'actions'}, h('button', {type: 'button', onclick: () => { rows.push({p: '', n: 0}); render(); }}, '+ Ajouter un palier'),
+      sex === 'G' ? h('button', {type: 'button', onclick: () => { g.table.G = clone(g.table.F); render(); }}, 'Copier le barème filles') : null));
+    tables.append(box);
+  }
+  app.append(tables);
+  function savePerf() {
+    if (!g.name.trim()) return toast('Donnez un nom au barème.');
+    const ok = ['F', 'G'].some(x => (g.table[x] || []).filter(r => parsePerf(r.p, g.unit) != null).length >= 2);
+    if (!ok) return toast('Indiquez au moins deux paliers valides.');
+    g.updatedAt = Date.now();
+    const i = db.grids.findIndex(x => x.id === g.id); if (i < 0) db.grids.push(g); else db.grids[i] = g;
+    const n = ensureCycleEvals();
+    if (save()) { toast('Barème enregistré.' + (n ? ' Évaluation finale créée pour ' + n + ' cycle' + (n > 1 ? 's' : '') + ' lié' + (n > 1 ? 's' : '') + '.' : '')); go({name: 'home'}); }
+  }
+}
+// Saisie d'un barème de performance : toute la classe dans un tableau.
+function renderPerfEval(ev, students) {
+  const g = ev.grid;
+  app.append(h('p', {class: 'muted'}, better(g) + ' Saisissez la performance' + (g.unit === 'time' ? ' (ex. 3:25)' : '') + ' : la note se calcule avec le barème filles ou garçons.'));
+  const tb = h('table', {class: 'perf-eval'}, h('thead', {}, h('tr', {}, h('th', {}, 'Élève'), h('th', {}, 'Sexe'), h('th', {}, PERF_UNITS[g.unit]), h('th', {}, 'Situation'), h('th', {class: 'num'}, 'Note /20'))));
+  const body = h('tbody');
+  for (const s of students) {
+    const mark = ev.marks[s.id] || {}, sc = perfScore(ev, mark, s);
+    const noteCell = h('td', {class: 'num strong'}, sc.status ? STATUS[sc.status] : sc.complete ? fmt(sc.note) : sc.needSex ? 'Sexe ?' : '');
+    const refresh = () => { const r = perfScore(ev, ev.marks[s.id], s); noteCell.textContent = r.status ? STATUS[r.status] : r.complete ? fmt(r.note) : r.needSex ? 'Sexe ?' : ''; updateAvg(); };
+    const sexSel = h('select', {'aria-label': 'Sexe de ' + studentName(s), onchange: e => { markOf(ev, s.id).sex = e.target.value; ev.marks[s.id].updatedAt = Date.now(); save(); refresh(); }},
+      h('option', {value: ''}, '—'), h('option', {value: 'F', selected: perfSex(mark, s) === 'F'}, 'F'), h('option', {value: 'G', selected: perfSex(mark, s) === 'G'}, 'G'));
+    const perfIn = h('input', {value: mark.perf || '', inputMode: g.unit === 'time' ? 'text' : 'decimal', placeholder: g.unit === 'time' ? 'min:s' : '', 'aria-label': 'Performance de ' + studentName(s), disabled: !!mark.status,
+      oninput: e => { markOf(ev, s.id).perf = e.target.value; ev.marks[s.id].updatedAt = Date.now(); save(); refresh(); }});
+    const st = h('select', {'aria-label': 'Situation de ' + studentName(s), onchange: e => { markOf(ev, s.id).status = e.target.value; ev.marks[s.id].updatedAt = Date.now(); save(); render(); }},
+      ...Object.entries(STATUS).map(([k, l]) => h('option', {value: k, selected: (mark.status || '') === k}, l)));
+    body.append(h('tr', {}, h('th', {}, studentName(s), ' ', ...liveTags(ev, s)), h('td', {}, sexSel), h('td', {}, perfIn), h('td', {}, st), noteCell));
+  }
+  tb.append(body);
+  const avgBox = h('p', {class: 'muted'});
+  const updateAvg = () => { const n = students.map(s => perfScore(ev, ev.marks[s.id], s)).filter(r => r.complete).map(r => r.note); avgBox.textContent = n.length + ' / ' + students.length + ' élèves notés' + (n.length ? ' · moyenne ' + fmt(n.reduce((a, b) => a + b, 0) / n.length) + ' / 20' : ''); };
+  app.append(h('div', {class: 'table-box'}, tb), avgBox); updateAvg();
+}
+function perfCSV(ev, students) {
+  const g = ev.grid, lines = students.map(s => { const m = ev.marks[s.id] || {}, r = perfScore(ev, m, s); return [s.last, s.first, perfSex(m, s), m.status ? STATUS[m.status] : fmtPerf(r.perf, g.unit), r.complete ? fmt(r.note) : '']; });
+  const csv = [['Nom', 'Prénom', 'Sexe', PERF_UNITS[g.unit], 'Note /20'], ...lines].map(l => l.map(v => '"' + String(v).replace(/"/g, '""') + '"').join(';')).join('\n');
+  const a = h('a', {href: URL.createObjectURL(new Blob(['\ufeff' + csv], {type: 'text/csv'})), download: (ev.title + '-' + (classOf(ev.classId)?.name || '')).replace(/[^\w-]+/g, '_') + '.csv'});
+  document.body.append(a); a.click(); a.remove();
+}
+
+applyCtx();
+if (ensureCycleEvals()) toast('Évaluation finale créée pour les cycles liés à vos grilles.');
+save();
+openPending();
 render();
