@@ -52,6 +52,7 @@ Suppressions en cascade : table `deps` dans `app.js` (ex. supprimer une classe s
 | Co-évaluation | `df-coeval-v1`, `coeval-ui` | — |
 | Évaluations | `eps-evaluations-v1`, `eps-evaluations-context` | — |
 | Conquête (`conquete-laser`) | `lrc-device`, `lrc-station`, `lrc-demo-state-v1`, `lrc-eps-<code partie>` (lien partie ↔ classe) | — |
+| Poules tournantes | `tournamentData_v7` (poule en cours), `poules-eps-link` (lien poule ↔ classe : noms affichés → identifiants), `poules-eps-count` (numérotation des poules) | — |
 | Applications du kit (SDK v1) | `eps-manager:<id>:context`, `eps-manager:outbox:<id>` | — |
 
 ## 4. Sauvegarde (format version 3)

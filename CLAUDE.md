@@ -27,7 +27,8 @@ Faire évoluer EPS Manager en carnet de bord pédagogique d'EPS, prioritairement
 - `style.css` : styles principaux ; `board/board.js`, `board/host.js`, `board/board.css`, `board/host.css` : tableaux.
 - `sw.js` : `VERSION=25`, cache `eps-v25`, stratégie réseau d'abord puis cache hors ligne ; précacher le shell.
 - Base `indexedDB.open('eps-manager',5)` ; magasins actuels : `years`, `classes`, `students`, `groups`, `cycles`, `sessions`, `attendance`, `restrictions`, `grades`, `comments`, `observations`, `holidays`, `timetable`, `settings`, `results`, `boards`.
-- `modules/modules.json` : `demi-fond`, `coeval`, `evaluations`, `conquete-laser`.
+- `modules/modules.json` : `demi-fond`, `coeval`, `evaluations`, `conquete-laser`, `poules-tournantes`.
+- `modules/poules-tournantes/` : copie adaptée du dépôt `Ambroise-pro/poulestournante` (voir son `README-EPS.md` : seuls classement par élève et résumé de poule sont envoyés ; Tailwind en local).
 - `modules/README.md` et `modules/sdk/README.md` décrivent le protocole actuel.
 - `modules/sdk/eps-sdk.js` (SDK 1.0), `modules/sdk/eps-adapter.js` : contexte via `localStorage` et outbox ; `beforeOpen`, `refresh`, `collect`.
 - `modules/evaluations/eval.js`, `modules/evaluations/eps-adapter.js`, `modules/coeval/eps-adapter.js`, `modules/demi-fond/eps-adapter.js` sont des points d'intégration existants.
