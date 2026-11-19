@@ -21,6 +21,25 @@ et récupère les notes, les résultats par élève et un résumé de séance qu
 - Les notes vont dans les Évaluations d'EPS Manager et la fiche de l'élève ; les résultats et le résumé vont dans la
   séance de la classe à la date indiquée (la séance d'où l'application a été ouverte si c'est le cas).
 
+## Avant de commencer : demande quelles données envoyer à EPS Manager
+
+**Ne modifie aucun fichier avant d'avoir posé cette question et reçu la réponse.** C'est l'enseignant qui décide
+quelles données de l'application se retrouveront dans EPS Manager.
+
+1. Explore l'application (sans rien modifier) et repère toutes les données qu'elle produit sur les élèves ou les séances :
+   notes, temps, distances, scores, niveaux ou degrés atteints, compétences validées, rôles tenus, commentaires,
+   bilans de séance…
+2. Présente-les à l'enseignant sous forme de liste numérotée. Pour chacune, indique :
+   - ce que c'est et à quel moment l'application la produit ;
+   - où elle arriverait dans EPS Manager : **note sur 20** (`grade` → Évaluations et fiche élève),
+     **résultat par élève** (`result` → séance de la classe) ou **résumé de séance** (`summary`) ;
+   - le libellé proposé (ex. « Course 1 · 800 m ») et, pour une note, la conversion sur 20 si l'application note autrement.
+3. Demande-lui de choisir : lesquelles envoyer, sous quelle forme, avec quel libellé, et si les données déjà présentes
+   dans l'application doivent aussi être reprises.
+4. **Attends sa réponse**, puis récapitule le choix en une courte liste avant de commencer.
+   N'envoie ensuite **que** les données choisies : rien d'autre ne doit partir vers EPS Manager.
+   En cas de doute sur une donnée, repose la question plutôt que de l'envoyer.
+
 ## Ce que tu dois faire
 
 1. **Garder `eps-sdk.js` et `eps-adapter.js` tels quels** à la racine de l'application (à côté de sa page d'accueil).
@@ -53,7 +72,8 @@ et récupère les notes, les résultats par élève et un résumé de séance qu
    (`class.id`, `student.id`) : ce sont eux qu'il faudra renvoyer. Si l'application a déjà ses propres listes,
    ajoute ou mets à jour les élèves sans effacer ses données (rapprochement par identifiant, sinon par nom).
    Remplace ou complète l'import manuel de listes (CSV, saisie) quand EPS Manager fournit les classes.
-5. **Envoyer les résultats** au moment où l'application les produit (enregistrement d'une note, fin d'une épreuve…) :
+5. **Envoyer les données choisies par l'enseignant** (et seulement celles-là), au moment où l'application les produit
+   (enregistrement d'une note, fin d'une épreuve…) :
    ```js
    EPSManager.grade({key: 'note:' + evaluationId + ':' + studentId, studentId, name: 'Titre de l’évaluation', grade: 14.5, date: '2026-11-19'});
    EPSManager.result({key: 'temps:' + courseId + ':' + studentId, studentId, label: 'Course 1 · 800 m', value: '3:12', unit: '', date});
@@ -79,10 +99,13 @@ et récupère les notes, les résultats par élève et un résumé de séance qu
 - Copiée dans `modules/<nom>/` d'EPS Manager, puis associée (page « Applications » › « Associer une application »,
   nom du dossier) et ouverte depuis une séance : elle affiche les classes et élèves d'EPS Manager, ouvre la classe de la
   séance, et après une note donnée puis retour à EPS Manager, la note apparaît dans les Évaluations et dans la séance.
-- Décris en fin de travail : les fichiers modifiés, où sont appelés `grade/result/summary`, et ce qui reste à faire.
+- Seules les données choisies par l'enseignant arrivent dans EPS Manager.
+- Décris en fin de travail : les fichiers modifiés, la liste des données envoyées (forme, libellé, conversion) avec
+  l'endroit où sont appelés `grade/result/summary`, et ce qui reste à faire.
 
 ## Variante sans modifier l'application
 
+La question préalable sur les données à envoyer s'applique aussi à cette variante.
 Si l'application ne doit pas être modifiée, n'utilise pas le SDK : écris un `eps-adapter.js` spécifique (module ES)
 qui exporte `beforeOpen(ctx)` (recopie `ctx.classes` dans le stockage de l'application, dans son format) et
 `collect(ctx)` (lit le stockage de l'application et renvoie `{grades, results, summaries}` au format ci-dessus,

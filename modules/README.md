@@ -10,6 +10,10 @@ Le dossier `sdk/` contient le kit : un prompt prêt à coller dans un assistant 
 une bibliothèque à inclure dans l'application (`sdk/eps-sdk.js`) et une liaison standard (`sdk/eps-adapter.js`).
 Voir `sdk/README.md` et l'application d'exemple `exemple-sdk/`.
 
+**C'est l'enseignant qui choisit ce qui arrive dans EPS Manager** : avant toute modification, l'assistant doit lister
+les données produites par l'application et demander lesquelles envoyer (note sur 20, résultat par élève, résumé de séance),
+puis n'envoyer que celles-là.
+
 ## Ajouter un module
 
 1. Copier l'application dans `modules/<nom-du-dossier>/` (lettres, chiffres, `-`, `_`).

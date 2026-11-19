@@ -13,7 +13,10 @@ Ce dossier permet de rendre **n'importe quelle application web** compatible avec
 ## En trois étapes
 
 1. Dans le dépôt de l'application : copier `eps-sdk.js` et `eps-adapter.js`, puis donner `PROMPT.md` à l'assistant
-   (ou suivre ses étapes à la main) : il ajoute `eps-module.json`, charge le SDK et branche les envois.
+   (ou suivre ses étapes à la main). **Avant de commencer, l'assistant vous présente les données que l'application
+   produit et vous demande lesquelles envoyer dans EPS Manager** (note sur 20, résultat par élève ou résumé de séance,
+   avec quel libellé) : vous choisissez, et seules ces données seront transmises. Il ajoute ensuite `eps-module.json`,
+   charge le SDK et branche les envois choisis.
 2. Copier l'application dans `modules/<nom-du-dossier>/` d'EPS Manager.
 3. Dans EPS Manager : page « Applications » › « Associer une application » › nom du dossier
    (ou ajouter le nom dans `modules/modules.json`).
