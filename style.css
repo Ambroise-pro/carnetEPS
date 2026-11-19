@@ -98,7 +98,7 @@ input[type=file]{padding:10px}
 /* ---------- Appel ---------- */
 .attendance-head{display:flex;flex-direction:column;gap:10px}
 .legend{display:flex;flex-wrap:wrap;gap:8px}
-.legend span{display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:600;padding:5px 10px;border-radius:999px;background:var(--surface);border:1px solid var(--line)}
+.legend>span{display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:600;padding:5px 10px;border-radius:999px;background:var(--surface);border:1px solid var(--line)}
 .pupils{display:grid;gap:12px;grid-template-columns:repeat(auto-fill,minmax(150px,1fr))}
 .pupil{position:relative;display:flex;flex-direction:column;align-items:center;gap:6px;padding:16px 8px 12px;border-radius:18px;background:var(--surface);border:2px dashed #b9c6b7;color:var(--ink);min-height:150px;font-weight:600;font-size:14px;text-align:center}
 .pupil .avatar{width:64px;height:64px;font-size:20px}
@@ -290,6 +290,14 @@ pre.code{background:#f4f6f1;border-radius:12px;padding:12px;font-size:12px;overf
 .today-card .body .tag{align-self:flex-start;margin-top:4px}
 .today-card.now .tag{background:var(--accent);color:var(--ink)}
 .today-card.now .btn{border-color:#fff}
+
+/* ---------- Symboles des mentions ---------- */
+.dot svg,.sq svg{width:64%;height:64%;stroke-width:2.6}
+.dot{width:24px;height:24px;border-radius:12px}
+.pupil .st{min-width:30px;width:30px;height:30px;border-radius:15px;padding:0}
+.sq svg{width:58%;height:58%}
+.sq.ok{color:var(--primary)}
+.legend .dot{width:22px;height:22px}
 
 /* ---------- Tablette portrait ---------- */
 @media (max-width:1023px){

@@ -1,6 +1,6 @@
 // Numéro de version affiché dans l'application : l'incrémenter à chaque nouvelle livraison
 // (et le reporter dans sw.js pour renouveler le cache hors ligne).
-const APP_VERSION=3;
+const APP_VERSION=4;
 
 // ---------- Structure de l'application ----------
 const pages={home:'Tableau de bord',calendar:'Calendrier',sessions:'Séances',attendance:'Appel',classes:'Classes',students:'Élèves',groups:'Groupes',cycles:'Cycles',restrictions:'Inaptitudes',grades:'Évaluations',comments:'Appréciations',observations:'Observations',planning:'Paramètres du calendrier',absences:'Absences',settings:'Paramètres',student:'Fiche élève',session:'Séance',years:'Années scolaires',backup:'Sauvegardes'};
@@ -64,14 +64,15 @@ const listTitles={timetable:'Cours',holidays:'Périodes'};
 const nouns={results:['résultat de module','résultats de module'],years:['année','années'],classes:['classe','classes'],students:['élève','élèves'],groups:['groupe','groupes'],cycles:['cycle','cycles'],sessions:['séance','séances'],restrictions:['inaptitude','inaptitudes'],grades:['note','notes'],comments:['appréciation','appréciations'],observations:['observation','observations'],timetable:['cours de l’emploi du temps','cours de l’emploi du temps'],holidays:['période de vacances','périodes de vacances'],attendance:['mention d’appel','mentions d’appel']};
 const deps={years:[['classes','year'],['holidays','year'],['timetable','year']],classes:[['students','classId'],['groups','classId'],['cycles','classId'],['sessions','classId'],['timetable','classId']],students:[['restrictions','student'],['grades','student'],['comments','student'],['observations','student'],['attendance','student'],['results','student']],sessions:[['attendance','sessionId'],['results','sessionId']]};
 // Appel : tout le monde est présent par défaut, seules les exceptions sont enregistrées.
+// Chaque mention a une couleur et un symbole, pour être repérée d'un coup d'œil dans les résumés.
 const statusInfo={
- 'Présent':{k:'P',bg:'#1b4d3e',fg:'#fff'},
- 'Absent':{k:'A',bg:'#b3261e',fg:'#fff'},
- 'Retard':{k:'R',bg:'#f2c14e',fg:'#10261f'},
- 'Oubli de tenue':{k:'T',bg:'#e8833a',fg:'#10261f'},
- 'Oubli de chaussures':{k:'C',bg:'#7b4bc4',fg:'#fff'},
- 'Certificat médical':{k:'CM',bg:'#2f5bea',fg:'#fff'},
- 'Mot des parents':{k:'MP',bg:'#0f7b74',fg:'#fff'}
+ 'Présent':{k:'P',bg:'#1b4d3e',fg:'#fff',icon:'M5 12.5l4.5 4.5L19 7.5'},
+ 'Absent':{k:'A',bg:'#b3261e',fg:'#fff',icon:'M6.5 6.5l11 11M17.5 6.5l-11 11'},
+ 'Retard':{k:'R',bg:'#f2c14e',fg:'#10261f',icon:'M12 7.5V12l3 2M12 20.5a8.5 8.5 0 1 0 0-17 8.5 8.5 0 0 0 0 17z'},
+ 'Oubli de tenue':{k:'T',bg:'#e8833a',fg:'#10261f',icon:'M9 3.5L3.5 6.5l2 4 2.5-1v10.5h8V9.5l2.5 1 2-4L15 3.5c-.5 1.6-1.6 2.5-3 2.5s-2.5-.9-3-2.5z'},
+ 'Oubli de chaussures':{k:'C',bg:'#7b4bc4',fg:'#fff',icon:'M3 17.5V8.5h4.5l1.5 3 4.5 1.5 6 1.5a1.5 1.5 0 0 1 1.5 1.5v1.5zM3 20.5h18M9 11.5l1-2M11.5 12.5l1-2'},
+ 'Certificat médical':{k:'CM',bg:'#2f5bea',fg:'#fff',icon:'M9.5 3.5h5v6h6v5h-6v6h-5v-6h-6v-5h6z'},
+ 'Mot des parents':{k:'MP',bg:'#0f7b74',fg:'#fff',icon:'M3.5 6.5h17v11h-17zM3.5 7l8.5 6 8.5-6'}
 };
 const statuses=Object.keys(statusInfo);
 // Contenu pédagogique d'une séance (champs texte enregistrés sur la séance).
@@ -469,7 +470,7 @@ function renderAttendance(){
  const statusOf=p=>data.attendance.find(a=>a.id===sessionId+'/'+p.id)?.status||'Présent';
  const counts={};for(const p of pupils){const st=statusOf(p);counts[st]=(counts[st]||0)+1}
  const legend=el('div','',head,'legend');
- for(const st of statuses)if(counts[st]){const sp=el('span','',legend);const dt=el('span',statusInfo[st].k,sp,'dot');dt.style.background=statusInfo[st].bg;dt.style.color=statusInfo[st].fg;sp.append(st+' · '+counts[st])}
+ for(const st of statuses)if(counts[st]){const sp=el('span','',legend);statusDot(st,sp);sp.append(st+' · '+counts[st])}
  el('p','Tous les élèves sont présents par défaut. Touchez un élève pour indiquer une absence, un retard, un oubli ou une dispense.',head,'muted');
 
  const grid=el('div','',view,'pupils');
@@ -478,7 +479,7 @@ function renderAttendance(){
   const b=button('',grid,'pupil'+(st==='Présent'?'':' flagged'));
   b.style.setProperty('--c',info.bg);b.style.setProperty('--fg',info.fg);
   avatar(p,b);el('span',p.first,b);el('span',p.last,b,'last');
-  el('span',info.k,b,'st');
+  const sd=statusDot(st,b,'st');if(st==='Présent'){sd.style.background='#e5ebe3';sd.style.color='var(--primary)'}
   if(st!=='Présent')el('span',st,b,'st-label');
   if(restrictionOf(p.id))el('span','!',b,'inapt').title='Inaptitude en cours';
   b.setAttribute('aria-label',label(p)+' : '+st);
@@ -495,7 +496,7 @@ function pupilSheet(p,session,current){
  const grid=el('div','',d,'status-grid');
  for(const st of statuses){
   const b=button('',grid,'status-btn');b.setAttribute('aria-pressed',st===current);
-  const dot=el('span',statusInfo[st].k,b,'dot');dot.style.background=statusInfo[st].bg;dot.style.color=statusInfo[st].fg;b.append(st);
+  statusDot(st,b);b.append(st);
   b.onclick=async()=>{
    const id=session.id+'/'+p.id;
    await transaction(['attendance','sessions'],t=>{if(st==='Présent')t.objectStore('attendance').delete(id);else t.objectStore('attendance').put({id,sessionId:session.id,student:p.id,status:st});t.objectStore('sessions').put({...session,called:'1'})});
@@ -771,7 +772,8 @@ function studentStats(p,list){
  return out;
 }
 const mentionCols=statuses.filter(s=>s!=='Présent');
-function statusDot(st,parent){const d=el('span',statusInfo[st].k,parent,'dot');d.style.background=statusInfo[st].bg;d.style.color=statusInfo[st].fg;d.title=st;return d}
+function statusIcon(st,parent){const v=document.createElementNS(svgNS,'svg');v.setAttribute('viewBox','0 0 24 24');v.setAttribute('aria-hidden','true');const p=document.createElementNS(svgNS,'path');p.setAttribute('d',statusInfo[st].icon);v.append(p);parent.append(v);return v}
+function statusDot(st,parent,cls){const d=el('span','',parent,'dot'+(cls?' '+cls:''));statusIcon(st,d);d.style.background=statusInfo[st].bg;d.style.color=statusInfo[st].fg;d.title=st;return d}
 function renderAbsences(){
  if(!data.classes.length){el('p','Aucune classe pour le moment.',view,'empty');return}
  if(absClass&&!find('classes',absClass))absClass='';
@@ -874,7 +876,7 @@ function renderStudent(id){
   // Frise de toutes les séances
   el('h3','Toutes les séances',pa);
   const strip=el('div','',pa,'strip');
-  for(const s of yearList){const x=statusIn(s,p);const sq=el('span',x==='Présent'?'':statusInfo[x].k,strip,'sq'+(x==='Présent'?' ok':''));if(x!=='Présent'){sq.style.background=statusInfo[x].bg;sq.style.color=statusInfo[x].fg}sq.title=longDate(s.date)+' · '+(cycleOf(s)?.name||s.name)+' · '+x}
+  for(const s of yearList){const x=statusIn(s,p);const sq=el('span','',strip,'sq'+(x==='Présent'?' ok':''));statusIcon(x,sq);if(x!=='Présent'){sq.style.background=statusInfo[x].bg;sq.style.color=statusInfo[x].fg}sq.title=longDate(s.date)+' · '+(cycleOf(s)?.name||s.name)+' · '+x}
   const ments=yearList.filter(s=>statusIn(s,p)!=='Présent').sort((a,b)=>byDate(b,a));
   el('h3','Mentions · '+ments.length,pa);
   if(!ments.length)el('p','Aucune absence, aucun retard ni oubli cette année.',pa,'muted');
