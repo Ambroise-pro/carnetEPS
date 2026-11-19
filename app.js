@@ -1,12 +1,12 @@
 // Numéro de version affiché dans l'application : l'incrémenter à chaque nouvelle livraison
 // (et le reporter dans sw.js pour renouveler le cache hors ligne).
-const APP_VERSION=4;
+const APP_VERSION=5;
 
 // ---------- Structure de l'application ----------
-const pages={home:'Tableau de bord',calendar:'Calendrier',sessions:'Séances',attendance:'Appel',classes:'Classes',students:'Élèves',groups:'Groupes',cycles:'Cycles',restrictions:'Inaptitudes',grades:'Évaluations',comments:'Appréciations',observations:'Observations',planning:'Paramètres du calendrier',absences:'Absences',settings:'Paramètres',student:'Fiche élève',session:'Séance',years:'Années scolaires',backup:'Sauvegardes'};
+const pages={home:'Tableau de bord',calendar:'Calendrier',sessions:'Séances',attendance:'Appel',classes:'Classes',students:'Élèves',groups:'Groupes',cycles:'Cycles',restrictions:'Inaptitudes',grades:'Évaluations',comments:'Appréciations',observations:'Observations',planning:'Paramètres du calendrier',absences:'Absences',settings:'Paramètres',student:'Fiche élève',session:'Séance',boards:'Tableaux',board:'Tableau',years:'Années scolaires',backup:'Sauvegardes'};
 const navLabels={planning:'Emploi du temps'};
 const navGroups=[
- ['Quotidien',['home','calendar','sessions','attendance']],
+ ['Quotidien',['home','calendar','sessions','attendance','boards']],
  ['Mes élèves',['classes','students','groups','cycles','restrictions']],
  ['Suivi',['absences','grades','comments','observations']],
  ['Réglages',['settings','planning','years','backup']]
@@ -27,6 +27,7 @@ const icons={
  comments:'M4 5h16v11H8l-4 4z',
  observations:'M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12zM12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z',
  backup:'M12 4v11M7 10l5 5 5-5M5 20h14',
+ boards:'M3 4h18v12H3zM8 20h8M12 16v4M7 9h.01M12 11h.01M16 8h.01',
  absences:'M4 5h16v16H4zM4 10h16M8 3v4M16 3v4M9.5 13.5l5 5M14.5 13.5l-5 5',
  settings:'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1',
  student:'M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4 21c0-4 4-6 8-6s8 2 8 6',
@@ -38,7 +39,7 @@ const icons={
  prev:'M15 6l-6 6 6 6',
  next:'M9 6l6 6-6 6'
 };
-const stores=['years','classes','students','groups','cycles','sessions','attendance','restrictions','grades','comments','observations','holidays','timetable','settings','results'];
+const stores=['years','classes','students','groups','cycles','sessions','attendance','restrictions','grades','comments','observations','holidays','timetable','settings','results','boards'];
 const enums={
  duration:[['30','30 min'],['45','45 min'],['55','55 min'],['60','1 h'],['90','1 h 30'],['110','1 h 50'],['120','2 h'],['165','2 h 45'],['180','3 h'],['240','4 h']],
  weekday:[['1','Lundi'],['2','Mardi'],['3','Mercredi'],['4','Jeudi'],['5','Vendredi'],['6','Samedi']],
@@ -61,8 +62,8 @@ const fields={
 };
 const addTitles={timetable:'Ajouter un cours',holidays:'Ajouter une période de vacances',sessions:'Ajouter une séance ponctuelle',cycles:'Créer un cycle'};
 const listTitles={timetable:'Cours',holidays:'Périodes'};
-const nouns={results:['résultat de module','résultats de module'],years:['année','années'],classes:['classe','classes'],students:['élève','élèves'],groups:['groupe','groupes'],cycles:['cycle','cycles'],sessions:['séance','séances'],restrictions:['inaptitude','inaptitudes'],grades:['note','notes'],comments:['appréciation','appréciations'],observations:['observation','observations'],timetable:['cours de l’emploi du temps','cours de l’emploi du temps'],holidays:['période de vacances','périodes de vacances'],attendance:['mention d’appel','mentions d’appel']};
-const deps={years:[['classes','year'],['holidays','year'],['timetable','year']],classes:[['students','classId'],['groups','classId'],['cycles','classId'],['sessions','classId'],['timetable','classId']],students:[['restrictions','student'],['grades','student'],['comments','student'],['observations','student'],['attendance','student'],['results','student']],sessions:[['attendance','sessionId'],['results','sessionId']]};
+const nouns={boards:['tableau','tableaux'],results:['résultat de module','résultats de module'],years:['année','années'],classes:['classe','classes'],students:['élève','élèves'],groups:['groupe','groupes'],cycles:['cycle','cycles'],sessions:['séance','séances'],restrictions:['inaptitude','inaptitudes'],grades:['note','notes'],comments:['appréciation','appréciations'],observations:['observation','observations'],timetable:['cours de l’emploi du temps','cours de l’emploi du temps'],holidays:['période de vacances','périodes de vacances'],attendance:['mention d’appel','mentions d’appel']};
+const deps={years:[['classes','year'],['holidays','year'],['timetable','year']],classes:[['students','classId'],['groups','classId'],['cycles','classId'],['sessions','classId'],['timetable','classId'],['boards','classId']],students:[['restrictions','student'],['grades','student'],['comments','student'],['observations','student'],['attendance','student'],['results','student']],sessions:[['attendance','sessionId'],['results','sessionId']]};
 // Appel : tout le monde est présent par défaut, seules les exceptions sont enregistrées.
 // Chaque mention a une couleur et un symbole, pour être repérée d'un coup d'œil dans les résumés.
 const statusInfo={
@@ -81,7 +82,7 @@ const hasContent=s=>contentFields.some(([k])=>s?.[k]?.trim());
 const cancelReasons=['Jour férié','Sortie scolaire','Voyage scolaire','Grève','Absence de l’enseignant','Formation','Conseil de classe / réunion','Examens / brevet blanc','Installation indisponible','Météo'];
 
 // ---------- Données locales (IndexedDB) ----------
-const db=await new Promise((ok,no)=>{const r=indexedDB.open('eps-manager',4);r.onupgradeneeded=()=>{for(const k of stores)if(!r.result.objectStoreNames.contains(k))r.result.createObjectStore(k,{keyPath:'id'})};r.onsuccess=()=>ok(r.result);r.onerror=()=>no(r.error)});
+const db=await new Promise((ok,no)=>{const r=indexedDB.open('eps-manager',5);r.onupgradeneeded=()=>{for(const k of stores)if(!r.result.objectStoreNames.contains(k))r.result.createObjectStore(k,{keyPath:'id'})};r.onsuccess=()=>ok(r.result);r.onerror=()=>no(r.error)});
 const data={};
 async function load(){await Promise.all(stores.map(k=>new Promise((ok,no)=>{const r=db.transaction(k).objectStore(k).getAll();r.onsuccess=()=>{data[k]=r.result;ok()};r.onerror=()=>no(r.error)})))}
 function transaction(names,fn){return new Promise((ok,no)=>{const t=db.transaction(names,'readwrite');t.oncomplete=ok;t.onabort=()=>no(t.error);try{fn(t)}catch(e){t.abort();no(e)}})}
@@ -247,15 +248,16 @@ document.querySelector('.version').textContent='Version '+APP_VERSION;
 let sessionId='',classFilter='',period='upcoming',calWeek='',editing={};
 const collectionsOf=k=>k==='planning'?['timetable','holidays']:[k];
 function render(){
- let [k,param]=location.hash.slice(1).split('=');if(!(k in pages))k='home';current=k==='student'?'students':k==='session'?'calendar':k;
+ let [k,param]=location.hash.slice(1).split('=');if(!(k in pages))k='home';current=k==='student'?'students':k==='session'?'calendar':k==='board'?'boards':k;
  if(editing.k&&!collectionsOf(k).includes(editing.k))editing={};
  buildNav();
+ openBoards=[];
  view.replaceChildren();
  const q=search.value.trim();
  if(q){document.querySelector('h1').textContent='Recherche';return renderSearch(q)}
  document.querySelector('h1').textContent=pages[k];
  document.title=pages[k]+' · EPS Manager';
- ({home:renderHome,calendar:renderCalendar,planning:renderPlanning,attendance:renderAttendance,backup:renderBackup,absences:renderAbsences,settings:renderSettings,student:()=>renderStudent(decodeURIComponent(param||'')),session:()=>renderSession(decodeURIComponent(param||''))}[k]||renderList)(k);
+ ({home:renderHome,calendar:renderCalendar,planning:renderPlanning,attendance:renderAttendance,backup:renderBackup,absences:renderAbsences,settings:renderSettings,student:()=>renderStudent(decodeURIComponent(param||'')),session:()=>renderSession(decodeURIComponent(param||'')),boards:renderBoards,board:()=>renderBoard(decodeURIComponent(param||''))}[k]||renderList)(k);
 }
 
 // ---------- Tableau de bord ----------
@@ -519,7 +521,7 @@ function renderBackup(){
  input.onchange=async()=>{try{
   const b=JSON.parse(await input.files[0].text());
   if(![1,2].includes(b.version)||!b.data||typeof b.data!=='object')throw Error();
-  for(const key of ['holidays','timetable','settings','results'])b.data[key]??=[];
+  for(const key of ['holidays','timetable','settings','results','boards'])b.data[key]??=[];
   if(!stores.every(key=>Array.isArray(b.data[key])&&b.data[key].every(r=>r&&typeof r.id==='string'&&Object.values(r).every(v=>typeof v==='string'))))throw Error();
   if(!confirm('Remplacer toutes les données locales par cette sauvegarde ?'))return;
   await transaction(stores,t=>{for(const key of stores){const st=t.objectStore(key);st.clear();b.data[key].forEach(r=>st.add(r))}});await load();await migrateAttendance();render();notify('Sauvegarde restaurée.');
@@ -584,6 +586,7 @@ async function loadSample(){
  if(dirty.length){await transaction('sessions',tx=>dirty.forEach(s=>tx.objectStore('sessions').put(Object.fromEntries(Object.entries(s).filter(([,v])=>typeof v==='string')))));await load()}
  sessionId='';classFilter='';editing={};
  await sampleContent();
+ await sampleBoard();
  location.hash='#home';render();notify('Données d’exemple chargées : 2 classes, 48 élèves.');
 }
 
@@ -953,6 +956,7 @@ function renderSession(id){
  }
  const acts=el('div','',head,'actions');
  if(!s.cancelled)link(acts,'attendance',isCalled(s)?'Voir l’appel':'Faire l’appel','btn primary').onclick=()=>{sessionId=s.id};
+ link(acts,'boards','Tableaux de la classe','btn').onclick=()=>{classFilter=s.classId};
  button('Date, heure, classe…',acts).onclick=()=>{editing={k:'sessions',id:s.id};location.hash='#sessions'};
  if(s.cancelled)button('Rétablir / effacer…',acts,'danger').onclick=()=>openSession(s);else button('Supprimer…',acts,'danger').onclick=()=>cancelSession(s);
 
@@ -1046,6 +1050,112 @@ async function sampleContent(){
   await addResults(evalS,'Chrono demi-fond',pupilsOf('ex-5B').map(p=>{const sec=110+Math.round(rnd()*50);return {eleve:p.id,epreuve:'3×500 m · moyenne',valeur:Math.floor(sec/60)+':'+String(sec%60).padStart(2,'0'),unite:'min'}}));
   if(vmaS)await addResults(vmaS,'Test VMA',pupilsOf('ex-5B').map(p=>({eleve:p.id,epreuve:'VMA',valeur:String(Math.round((10+rnd()*5)*2)/2).replace('.',','),unite:'km/h'})));
  }
+}
+
+// ---------- Tableaux de classe (moteur MonTableauBlanc, board/board.js) ----------
+let openBoards=[];const boardPick=new Set();
+const parseJSON=(v,d)=>{try{return JSON.parse(v||'')??d}catch{return d}};
+// Le moteur attend « NOM Prénom » et un portrait JPEG en base64 : ce sont les élèves et photos PRONOTE de l'application.
+const boardStudents=classId=>pupilsOf(classId).map(p=>({id:p.id,name:p.last.toLocaleUpperCase('fr')+' '+p.first,portrait:p.photo||''}));
+const boardBackgrounds=()=>typeof BOARD_BACKGROUNDS==='object'?BOARD_BACKGROUNDS:{blank:'Tableau blanc'};
+function newBoardRecord(classId,name,board={}){const now=new Date().toISOString();return {id:crypto.randomUUID(),classId,name,board:JSON.stringify(board),archives:'[]',created:now,updated:now}}
+function putBoard(rec){
+ const i=data.boards.findIndex(b=>b.id===rec.id);if(i<0)data.boards.push(rec);else data.boards[i]=rec;
+ return transaction('boards',t=>t.objectStore('boards').put(rec)).catch(()=>notify('Enregistrement du tableau impossible sur cet appareil.'));
+}
+window.EPSBoardHost={
+ notify:m=>notify(m),
+ render:()=>render(),
+ // Appelé par le moteur à chaque modification : enregistre les tableaux ouverts dans la base de l'application.
+ save:()=>{for(const o of openBoards){o.rec={...o.rec,name:o.group.name,board:JSON.stringify(o.group.board||{}),archives:JSON.stringify(o.group.boardArchives||[]),updated:new Date().toISOString()};putBoard(o.rec)}return true}
+};
+function boardSheet(classId,rec){
+ const c=find('classes',classId),d=sheet(rec?'Renommer le tableau':'Nouveau tableau · '+c.name);
+ const form=el('form','',d,'add');
+ const name=el('input','',el('label','Nom du tableau',form));name.required=true;name.maxLength=80;
+ name.value=rec?rec.name:(currentCycle(classId)?.name||'Tableau')+' · '+fmtDate(today(),{day:'numeric',month:'short'});
+ let bg,abs;
+ if(!rec){
+  bg=select(el('label','Fond',form),Object.entries(boardBackgrounds()).filter(([k])=>k!=='tennis'));
+  const s=data.sessions.find(x=>x.classId===classId&&x.date===today()&&active(x)&&isCalled(x));
+  const absents=s?recordsOf(s.id).filter(r=>r.status==='Absent').map(r=>r.student):[];
+  if(s){const l=el('label','',form,'check');abs=el('input','',l);abs.type='checkbox';abs.checked=true;l.append(' Reprendre l’appel du jour ('+plural(absents.length,'absent')+')');abs.dataset.ids=absents.join(',')}
+ }
+ el('button',rec?'Enregistrer':'Créer le tableau',el('div','',form,'form-actions'),'primary');
+ form.onsubmit=async e=>{e.preventDefault();const n=name.value.trim();if(!n)return;
+  if(rec){const b=parseJSON(rec.board,{});await putBoard({...rec,name:n,updated:new Date().toISOString()});d.close();render();notify('Tableau renommé.');return}
+  const board={background:bg.value};if(abs?.checked)board.absentIds=abs.dataset.ids.split(',').filter(Boolean);
+  const r=newBoardRecord(classId,n,board);await putBoard(r);d.close();location.hash='#board='+r.id};
+ d.showModal();name.focus();name.select();
+}
+function boardPreview(rec,parent){
+ const b=parseJSON(rec.board,{}),box=el('div','',parent,'board-mini'),pos=Object.values(b.positions||{});
+ for(const p of pos.slice(0,40)){const i=el('i','',box);i.style.left=p.x+'%';i.style.top=p.y+'%'}
+ if(!pos.length)el('span',boardBackgrounds()[b.background||'blank']||'Tableau blanc',box);
+}
+function renderBoards(){
+ if(!data.classes.length){el('p','Créez d’abord une classe et ses élèves.',view,'empty');link(view,'classes','Créer une classe →','btn primary').style.alignSelf='start';return}
+ if(classFilter&&!find('classes',classFilter))classFilter='';
+ if(!classFilter){
+  el('p','Choisissez une classe. Chaque tableau garde ses élèves, son fond (terrains, échelle de 1 à 20, montée-descente…), les positions, les notes et les dessins.',view,'muted');
+  const grid=el('div','',view,'list');
+  for(const c of data.classes){const n=data.boards.filter(b=>b.classId===c.id).length;const a=link(grid,'boards','','class-card');a.onclick=()=>{classFilter=c.id;queueMicrotask(render)};
+   const top=el('div','',a,'top');el('strong',c.name,top);el('span',plural(pupilsOf(c.id).length,'élève'),top,'muted');el('span',n?plural(n,'tableau','tableaux'):'Aucun tableau',a).style.fontWeight='600'}
+  return;
+ }
+ const c=find('classes',classFilter);
+ for(const id of [...boardPick])if(find('boards',id)?.classId!==c.id)boardPick.delete(id);
+ const bar=el('div','',view,'cal-bar');
+ const f=el('div','',bar,'filters');const cs=select(el('label','Classe',f),data.classes.map(x=>[x.id,x.name]));cs.value=c.id;cs.onchange=()=>{classFilter=cs.value;boardPick.clear();render()};
+ const acts=el('div','',bar,'actions');
+ if(boardPick.size>=2)button('Ouvrir ensemble · '+boardPick.size,acts,'primary').onclick=()=>{location.hash='#board='+[...boardPick].join(',')};
+ const imp=el('input','',acts);imp.type='file';imp.accept='.json,application/json';imp.hidden=true;
+ button('Importer un fichier',acts).onclick=()=>imp.click();
+ imp.onchange=async()=>{try{const j=JSON.parse(await imp.files[0].text());if(j.format!=='mon-tableau-blanc'||typeof j.board!=='object')throw Error();
+  const r=newBoardRecord(c.id,String(j.name||'Tableau importé').slice(0,80),j.board);await putBoard(r);render();notify('Tableau importé.')}catch{notify('Fichier de tableau non reconnu.')}};
+ button('+ Nouveau tableau',acts,'primary').onclick=()=>boardSheet(c.id);
+ const boards=data.boards.filter(b=>b.classId===c.id).sort((a,b)=>(b.updated||'').localeCompare(a.updated||''));
+ if(!boards.length){el('p','Aucun tableau pour la '+c.name+'. Créez-en un pour placer vos élèves sur un terrain, faire des groupes ou une montée-descente.',view,'empty');return}
+ const grid=el('div','',view,'list');
+ for(const b of boards){
+  const card=el('article','',grid,'board-card');
+  const top=el('div','',card,'top');link(top,'board='+b.id,b.name,'name');
+  boardPreview(b,link(card,'board='+b.id,'',''));
+  const lb=parseJSON(b.board,{}),placed=Object.keys(lb.positions||{}).length,notes=(lb.marks||[]).filter(m=>m.type==='note').length;
+  el('span',[boardBackgrounds()[lb.background||'blank'],placed?plural(placed,'élève placé','élèves placés'):'',notes?plural(notes,'note'):'','modifié le '+fmtDate((b.updated||'').slice(0,10),{day:'numeric',month:'short'})].filter(Boolean).join(' · '),card,'muted');
+  const row=el('div','',card,'item-actions');
+  const pick=el('label','',row,'check');const cb=el('input','',pick);cb.type='checkbox';cb.checked=boardPick.has(b.id);pick.append('Ouvrir ensemble');
+  cb.onchange=()=>{if(cb.checked&&boardPick.size>=4){cb.checked=false;notify('4 tableaux au maximum sur la même page.');return}cb.checked?boardPick.add(b.id):boardPick.delete(b.id);render()};
+  iconButton('edit','Renommer',row).onclick=()=>boardSheet(c.id,b);
+  button('Dupliquer',row,'small').onclick=async()=>{const r={...newBoardRecord(c.id,b.name+' (copie)'),board:b.board};await putBoard(r);render();notify('Tableau dupliqué.')};
+  iconButton('trash','Supprimer',row,'danger').onclick=()=>remove('boards',b.id);
+ }
+}
+function renderBoard(param){
+ const recs=param.split(',').map(id=>find('boards',id)).filter(Boolean).slice(0,4);
+ if(!recs.length){el('p','Tableau introuvable.',view,'empty');link(view,'boards','← Tableaux','link');return}
+ if(typeof renderClassBoard!=='function'){el('p','Le module tableau n’a pas pu se charger. Rechargez la page.',view,'notice');return}
+ const classId=recs[0].classId,c=find('classes',classId);classFilter=classId;
+ document.querySelector('h1').textContent=recs.length===1?recs[0].name:'Tableaux · '+(c?.name||'');document.title=document.querySelector('h1').textContent+' · EPS Manager';
+ const bar=el('div','',view,'cal-bar');link(bar,'boards','← Tableaux de la '+(c?.name||'classe'),'btn small');
+ const others=data.boards.filter(b=>b.classId===classId&&!recs.includes(b));
+ if(others.length&&recs.length<4){const f=el('div','',bar,'filters');const s=select(el('label','Ouvrir aussi',f),others.map(b=>[b.id,b.name]),'Choisir un tableau…');s.onchange=()=>{if(s.value)location.hash='#board='+[...recs.map(r=>r.id),s.value].join(',')}}
+ const host=el('div','',view,'board-host open-boards'),students=boardStudents(classId);
+ for(const rec of recs){
+  const group={id:rec.id,name:rec.name,board:parseJSON(rec.board,{}),boardArchives:parseJSON(rec.archives,[])};
+  openBoards.push({rec,group});
+  const container=el('div','',host);
+  renderClassBoard(group,students,classId,container,recs.length>1,
+   (name,layout)=>{putBoard(newBoardRecord(classId,name,layout));return true},
+   ()=>{const rest=recs.filter(x=>x.id!==rec.id).map(x=>x.id);location.hash=rest.length?'#board='+rest.join(','):'#boards'});
+ }
+}
+// Deux tableaux d'exemple pour la 5e B (appelé par loadSample).
+async function sampleBoard(){
+ const pupils=pupilsOf('ex-5B'),positions={};
+ pupils.forEach((p,i)=>{positions[p.id]={x:12+(i%4)*25,y:8+Math.floor(i/4)*15}});
+ await putBoard({...newBoardRecord('ex-5B','Badminton · montée-descente',{background:'badminton',ladderCourts:6,positions,marks:[{id:'n1',type:'note',text:'Penser à faire tourner les arbitres.',x:80,y:90}]}),id:'ex-board1'});
+ await putBoard({...newBoardRecord('ex-5B','Échauffement · groupes',{background:'blank',groups:4}),id:'ex-board2'});
 }
 
 // ---------- Recherche ----------

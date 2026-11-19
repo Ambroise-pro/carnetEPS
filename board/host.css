@@ -1,0 +1,26 @@
+/* Styles de l'application d'origine dont le tableau a besoin, limités au tableau. */
+.board-host{--accent:#1b4d3e;--quiet:#4a5e55}
+.board-host .card{background:#fff;border:1px solid var(--line);border-radius:var(--radius);padding:15px}
+.board-host dialog{width:min(calc(100% - 24px),560px);max-height:87vh;max-height:87dvh;overflow:auto;border-radius:20px;border:1px solid var(--line);background:#fff;color:var(--ink);padding:20px}
+.board-host dialog::backdrop{background:rgba(16,38,31,.45)}
+.board-host dialog h2{margin-bottom:12px;font-size:21px}
+.board-host .actions{display:flex;flex-wrap:wrap;gap:8px;justify-content:flex-end;margin-top:12px}
+.board-host button{min-height:44px;padding:0 14px;font-size:14px;border-radius:12px}
+.board-host .tool-blue{background:#e2edf9;color:#203f65;border-color:#99b3d3}
+.board-host .tool-purple{background:#efe5f7;color:#513565;border-color:#bca4cc}
+.board-host .tool-green{background:#dfefe5;color:#244d3a;border-color:#91b7a2}
+.board-host .tool-amber{background:#fff0d4;color:#634616;border-color:#c7a765}
+.board-host label.board-check,.board-host .board-roster-list label{flex-direction:row;align-items:center;gap:10px;color:var(--ink)}
+.board-host input[type=checkbox]{width:22px;min-height:22px;height:22px;flex:none}
+.board-host .pf-roster-photo{width:36px;height:36px;border-radius:50%;object-fit:cover;display:inline-grid;place-items:center;background:#eef2ec;flex:none}
+.board-host .board-tools summary{min-height:44px;display:flex;align-items:center}
+.open-boards{display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(min(520px,100%),1fr))}
+.board-card{display:flex;flex-direction:column;gap:10px;background:var(--surface);border:1px solid var(--line);border-radius:18px;padding:16px}
+.board-card .top{display:flex;gap:10px;align-items:center}
+.board-card .name{font-size:18px;font-weight:700;color:inherit;text-decoration:none;flex:1;min-width:0;overflow-wrap:anywhere}
+.board-card .name:hover{text-decoration:underline}
+.board-card .item-actions{flex-wrap:wrap}
+.board-card label.check{flex-direction:row;align-items:center;gap:8px;color:var(--ink);font-size:14px}
+.board-mini{height:110px;border-radius:12px;background:#f4f6f1;position:relative;overflow:hidden;border:1px solid var(--line-soft)}
+.board-mini i{position:absolute;width:12px;height:12px;border-radius:6px;background:var(--primary);transform:translate(-50%,-50%)}
+.board-mini span{position:absolute;inset:0;display:grid;place-items:center;font-size:13px;color:var(--muted);font-weight:600}
