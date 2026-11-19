@@ -1,9 +1,9 @@
 // Numéro de version affiché dans l'application : l'incrémenter à chaque nouvelle livraison
 // (et le reporter dans sw.js pour renouveler le cache hors ligne).
-const APP_VERSION=5;
+const APP_VERSION=6;
 
 // ---------- Structure de l'application ----------
-const pages={home:'Tableau de bord',calendar:'Calendrier',sessions:'Séances',attendance:'Appel',classes:'Classes',students:'Élèves',groups:'Groupes',cycles:'Cycles',restrictions:'Inaptitudes',grades:'Évaluations',comments:'Appréciations',observations:'Observations',planning:'Paramètres du calendrier',absences:'Absences',settings:'Paramètres',student:'Fiche élève',session:'Séance',boards:'Tableaux',board:'Tableau',years:'Années scolaires',backup:'Sauvegardes'};
+const pages={home:'Tableau de bord',calendar:'Calendrier',sessions:'Séances',attendance:'Appel',classes:'Classes',students:'Élèves',groups:'Groupes',cycles:'Cycles',restrictions:'Inaptitudes',grades:'Évaluations',comments:'Appréciations',observations:'Observations',planning:'Paramètres du calendrier',absences:'Absences',settings:'Paramètres',student:'Fiche élève',session:'Séance',boards:'Tableaux',board:'Tableau',module:'Module',years:'Années scolaires',backup:'Sauvegardes'};
 const navLabels={planning:'Emploi du temps'};
 const navGroups=[
  ['Quotidien',['home','calendar','sessions','attendance','boards']],
@@ -27,6 +27,7 @@ const icons={
  comments:'M4 5h16v11H8l-4 4z',
  observations:'M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12zM12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z',
  backup:'M12 4v11M7 10l5 5 5-5M5 20h14',
+ modules:'M9 3h6v4a2 2 0 1 0 4 0h2v6h-2a2 2 0 1 0 0 4h2v4H3V3h2a2 2 0 1 0 4 0z',
  boards:'M3 4h18v12H3zM8 20h8M12 16v4M7 9h.01M12 11h.01M16 8h.01',
  absences:'M4 5h16v16H4zM4 10h16M8 3v4M16 3v4M9.5 13.5l5 5M14.5 13.5l-5 5',
  settings:'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1',
@@ -43,13 +44,14 @@ const stores=['years','classes','students','groups','cycles','sessions','attenda
 const enums={
  duration:[['30','30 min'],['45','45 min'],['55','55 min'],['60','1 h'],['90','1 h 30'],['110','1 h 50'],['120','2 h'],['165','2 h 45'],['180','3 h'],['240','4 h']],
  weekday:[['1','Lundi'],['2','Mardi'],['3','Mercredi'],['4','Jeudi'],['5','Vendredi'],['6','Samedi']],
- freq:[['all','Toutes les semaines'],['A','Semaine A'],['B','Semaine B']]
+ freq:[['all','Toutes les semaines'],['A','Semaine A'],['B','Semaine B']],
+ sex:[['','Non précisé'],['F','Fille'],['G','Garçon']]
 };
 // [clé, libellé, type (store, enum, date, time, number ou texte), valeur par défaut]
 const fields={
  years:[['name','Année scolaire'],['start','Début','date'],['end','Fin','date']],
  classes:[['year','Année','years'],['name','Nom de la classe']],
- students:[['classId','Classe','classes'],['first','Prénom'],['last','Nom']],
+ students:[['classId','Classe','classes'],['first','Prénom'],['last','Nom'],['sex','Sexe','sex']],
  groups:[['classId','Classe','classes'],['name','Nom du groupe']],
  cycles:[['classId','Classe','classes'],['name','Activité / cycle'],['start','Début','date'],['end','Fin','date']],
  sessions:[['classId','Classe','classes'],['date','Date','date'],['time','Heure de début','time'],['duration','Durée','duration','110'],['name','Contenu de séance']],
@@ -240,6 +242,8 @@ function buildNav(){
   const g=el('div','',nav,'nav-group');el('span',title,g);
   for(const k of keys){const a=link(g,k,'');icon(k,a);el('span',navLabels[k]||pages[k],a,'label');if(badges[k])el('span',badges[k],a,'badge').setAttribute('aria-label',badges[k]+' à traiter');a.setAttribute('aria-current',k===current?'page':'false')}
  }
+ const mods=modules.filter(m=>!m.missing);
+ if(mods.length){const g=el('div','',nav,'nav-group');el('span','Modules',g);for(const m of mods){const a=link(g,'module='+m.id,'');icon('modules',a);el('span',m.name,a,'label');a.setAttribute('aria-current',current==='module='+m.id?'page':'false')}}
 }
 document.querySelector('time').textContent=new Intl.DateTimeFormat('fr',{dateStyle:'full'}).format(new Date());
 document.querySelector('.version').textContent='Version '+APP_VERSION;
@@ -248,7 +252,8 @@ document.querySelector('.version').textContent='Version '+APP_VERSION;
 let sessionId='',classFilter='',period='upcoming',calWeek='',editing={};
 const collectionsOf=k=>k==='planning'?['timetable','holidays']:[k];
 function render(){
- let [k,param]=location.hash.slice(1).split('=');if(!(k in pages))k='home';current=k==='student'?'students':k==='session'?'calendar':k==='board'?'boards':k;
+ let [k,param]=location.hash.slice(1).split('=');if(!(k in pages))k='home';current=k==='student'?'students':k==='session'?'calendar':k==='board'?'boards':k==='module'?'module='+param:k;
+ if(k!=='module')leaveModule();
  if(editing.k&&!collectionsOf(k).includes(editing.k))editing={};
  buildNav();
  openBoards=[];
@@ -257,7 +262,7 @@ function render(){
  if(q){document.querySelector('h1').textContent='Recherche';return renderSearch(q)}
  document.querySelector('h1').textContent=pages[k];
  document.title=pages[k]+' · EPS Manager';
- ({home:renderHome,calendar:renderCalendar,planning:renderPlanning,attendance:renderAttendance,backup:renderBackup,absences:renderAbsences,settings:renderSettings,student:()=>renderStudent(decodeURIComponent(param||'')),session:()=>renderSession(decodeURIComponent(param||'')),boards:renderBoards,board:()=>renderBoard(decodeURIComponent(param||''))}[k]||renderList)(k);
+ ({home:renderHome,calendar:renderCalendar,planning:renderPlanning,attendance:renderAttendance,backup:renderBackup,absences:renderAbsences,settings:renderSettings,student:()=>renderStudent(decodeURIComponent(param||'')),session:()=>renderSession(decodeURIComponent(param||'')),boards:renderBoards,board:()=>renderBoard(decodeURIComponent(param||'')),module:()=>renderModule(decodeURIComponent(param||''))}[k]||renderList)(k);
 }
 
 // ---------- Tableau de bord ----------
@@ -270,6 +275,7 @@ function todayCard(parent,s){
  el('span',sessionTitle(s),body,'title');
  el('span',[cycleText(s),sessionContent(s),plural(pupils,'élève')].filter(Boolean).join(' · '),body,'meta');
  if(hasContent(s))el('span','Contenu préparé',body,'tag');
+ const sm=data.results.find(r=>r.sessionId===s.id&&!r.student);if(sm)el('span',sm.module+' · '+sm.value,body,'meta');
  if(s.cancelled)el('span','Annulée · '+s.cancelled,card,'tag warn');
  else if(isNow(s))el('span',isCalled(s)?'En cours · appel fait':'En cours',card,'tag now');
  else if(isOver(s))el('span',isCalled(s)?'Appel fait':'Appel à faire',card,'tag'+(isCalled(s)?'':' warn'));
@@ -541,7 +547,8 @@ async function loadSample(){
  const classes=[{id:'ex-5B',year:y.id,name:'5e B'},{id:'ex-4A',year:y.id,name:'4e A'}];
  const firsts=['Léa','Hugo','Inès','Nathan','Chloé','Adam','Jade','Louis','Emma','Rayan','Lina','Gabriel','Mila','Noé','Zoé','Arthur','Manon','Sacha','Louise','Ethan','Alice','Yanis','Rose','Timéo','Camille','Mohamed','Anna','Jules','Sarah','Lucas','Lou','Malo','Nina','Tom','Ambre','Enzo','Clara','Nolan','Eva','Mathis','Agathe','Liam','Juliette','Maël','Lyna','Paul','Romane','Ilyes'];
  const lasts=['Martin','Bernard','Dubois','Thomas','Robert','Richard','Petit','Durand','Leroy','Moreau','Simon','Laurent','Lefebvre','Michel','Garcia','David','Bertrand','Roux','Vincent','Fournier','Morel','Girard','André','Mercier','Dupont','Lambert','Bonnet','François','Martinez','Legrand','Garnier','Faure','Rousseau','Blanc','Guerin','Muller','Henry','Roussel','Nicolas','Perrin','Morin','Mathieu','Clement','Gauthier','Dumont','Lopez','Fontaine','Chevalier'];
- const students=[];classes.forEach((c,ci)=>{for(let i=0;i<24;i++){const n=ci*24+i;students.push({id:'ex-st'+n,classId:c.id,first:firsts[n],last:lasts[(n*7)%lasts.length]})}});
+ const girls=['Léa','Inès','Chloé','Jade','Emma','Lina','Mila','Zoé','Manon','Louise','Alice','Rose','Camille','Anna','Sarah','Lou','Nina','Ambre','Clara','Eva','Agathe','Juliette','Lyna','Romane'];
+ const students=[];classes.forEach((c,ci)=>{for(let i=0;i<24;i++){const n=ci*24+i;students.push({id:'ex-st'+n,classId:c.id,first:firsts[n],last:lasts[(n*7)%lasts.length],sex:girls.includes(firsts[n])?'F':'G'})}});
  const groups=['Groupe 1','Groupe 2','Groupe 3','Groupe 4'].flatMap((g,i)=>classes.map(c=>({id:'ex-gr'+i+c.id,classId:c.id,name:g})));
  const timetable=[
   {id:'ex-tt1',year:y.id,classId:'ex-5B',weekday:'2',time:'10:05',duration:'110',freq:'all',name:'EPS'},
@@ -618,7 +625,7 @@ function renderCollection(k,parent){
    if(def)input.value=def;
    if(k==='holidays'&&key==='name'){input.setAttribute('list','holiday-names');const dl=el('datalist','',l);dl.id='holiday-names';for(const v of ['Toussaint','Noël','Hiver','Printemps','Pont de l’Ascension','Été','Jour férié'])dl.append(new Option(v))}
   }
-  input.name=key;input.required=!(k==='sessions'&&key==='time');
+  input.name=key;input.required=!(k==='sessions'&&key==='time')&&key!=='sex';
   if(old&&old[key]!=null)input.value=old[key];
  }
  const btns=el('div','',form,'form-actions');
@@ -682,7 +689,7 @@ function renderItem(k,row,list){
  const parts={
   years:[row.name,fmtDate(row.start)+' → '+fmtDate(row.end)+' · 1re semaine '+(row.firstWeek==='B'?'B':'A')],
   classes:[row.name,ref('years',row.year)+' · '+plural(pupilsOf(row.id).length,'élève')],
-  students:[label(row),ref('classes',row.classId)],
+  students:[label(row),[ref('classes',row.classId),row.sex==='F'?'Fille':row.sex==='G'?'Garçon':''].filter(Boolean).join(' · ')],
   groups:[row.name,ref('classes',row.classId)],
   cycles:[ref('classes',row.classId)+' · '+row.name,row.start?fmtDate(row.start,{day:'numeric',month:'short'})+' → '+fmtDate(row.end,{day:'numeric',month:'short'})+' · '+plural(cyc.length,'séance')+(cyc.length?' ('+cyc.filter(isStarted).length+' faites)':''):'Dates à définir : modifiez le cycle'],
   sessions:[sessionTitle(row),[fmtDate(row.date),timeRange(row),cycleText(row)].filter(Boolean).join(' · ')],
@@ -757,6 +764,7 @@ function renderSettings(){
  const n=watchList();
  el('p',n.length?'Avec ces réglages : '+plural(n.length,'alerte')+' en ce moment.':'Avec ces réglages : aucune alerte en ce moment.',p,'hint');
  const b=el('div','',p,'actions');button('Rétablir les réglages par défaut',b).onclick=()=>save(defaultSettings);
+ renderModulesSettings();
 }
 
 // ---------- Suivi des absences ----------
@@ -983,8 +991,11 @@ function renderSession(id){
 }
 function resultsPanel(s){
  const p=panel(view,'Résultats des modules');
- const rows=data.results.filter(r=>r.sessionId===s.id);
- if(!rows.length)el('p','Les résultats des modules connectés à l’application (chronomètre, tests physiques, évaluations…) apparaîtront ici, séance par séance et élève par élève.',p,'muted');
+ const all=data.results.filter(r=>r.sessionId===s.id),rows=all.filter(r=>r.student);
+ const sums=all.filter(r=>!r.student);
+ if(sums.length){const box=el('div','',p,'module-summary');for(const x of sums){const r=el('div','',box,'row');icon('modules',el('span','',r,'avatar'));const b=el('div','',r,'body');el('span',x.module,b,'title');el('span',x.value,b,'meta')}}
+ const mb=el('div','',p,'actions');moduleButtons(mb,s);if(!mb.children.length)mb.remove();
+ if(!rows.length&&!sums.length)el('p','Les résultats des modules connectés à l’application (chronomètre, tests physiques, évaluations…) apparaîtront ici, séance par séance et élève par élève.',p,'muted');
  const mods=[...new Set(rows.map(r=>r.module))];
  for(const m of mods){
   const list=rows.filter(r=>r.module===m).sort((a,b)=>ref('students',a.student).localeCompare(ref('students',b.student),'fr'));
@@ -1158,6 +1169,126 @@ async function sampleBoard(){
  await putBoard({...newBoardRecord('ex-5B','Échauffement · groupes',{background:'blank',groups:4}),id:'ex-board2'});
 }
 
+// ---------- Modules : applications ajoutées dans le dossier modules/ ----------
+// Un module est un dossier modules/<nom>/ contenant l'application telle quelle, plus :
+//  - eps-module.json : {"name", "entry" (page d'accueil), "adapter" (facultatif), "description"}
+//  - un adaptateur (module JavaScript) qui peut exporter :
+//      beforeOpen(ctx) : appelé avant l'ouverture, pour recopier les classes dans le module ;
+//      collect(ctx)    : renvoie {grades, results, summaries, studentUpdates} (voir importModuleData).
+// La liste des dossiers vient de modules/modules.json et des dossiers ajoutés dans Réglages › Paramètres.
+// L'application principale ne contient rien de spécifique à un module.
+let modules=[],modulesReady=null,openModule=null,moduleTimer=null;
+const moduleSync={};
+const moduleNameOk=n=>/^[a-z0-9][a-z0-9_-]{0,63}$/i.test(n);
+function extraModules(){return (settings().modules||'').split(',').map(s=>s.trim()).filter(moduleNameOk)}
+async function discoverModules(){
+ let listed=[];
+ try{const r=await fetch('modules/modules.json',{cache:'no-cache'});if(r.ok){const j=await r.json();if(Array.isArray(j))listed=j.map(String)}}catch{}
+ const names=[...new Set([...listed,...extraModules()])].filter(moduleNameOk),found=[];
+ for(const id of names){
+  try{const r=await fetch('modules/'+id+'/eps-module.json',{cache:'no-cache'});if(!r.ok)throw Error();const m=await r.json();
+   found.push({id,base:'modules/'+id+'/',name:String(m.name||id),description:String(m.description||''),entry:String(m.entry||'index.html'),adapter:m.adapter?String(m.adapter):'',fromSettings:!listed.includes(id)});
+  }catch{found.push({id,base:'modules/'+id+'/',name:id,missing:true,fromSettings:!listed.includes(id)})}
+ }
+ modules=found;return found;
+}
+function moduleContext(m){
+ return {module:{id:m.id,name:m.name},base:new URL(m.base,location.href).href,today:today(),
+  classes:data.classes.map(c=>({id:c.id,name:c.name,students:pupilsOf(c.id).map(p=>({id:p.id,first:p.first,last:p.last,sex:p.sex||'',photo:p.photo||''}))})),
+  sessions:data.sessions.filter(active).map(s=>({id:s.id,classId:s.classId,date:s.date,time:s.time||'',duration:s.duration||'',title:sessionTitle(s)}))};
+}
+const adapters={};
+async function adapterOf(m){
+ if(!m.adapter||m.missing)return null;
+ adapters[m.id]??=import(new URL(m.base+m.adapter,location.href).href).catch(()=>null);
+ return adapters[m.id];
+}
+// Format commun renvoyé par collect() (les « key » rendent la synchronisation répétable sans doublons) :
+//  grades:     [{key, studentId, name, grade, date}]                 → Évaluations
+//  results:    [{key, classId, date, studentId, label, value, unit}] → Résultats de la séance de ce jour
+//  summaries:  [{key, classId, date, text}]                          → Résumé dans la séance de ce jour
+//  studentUpdates: [{studentId, sex}]                                → complète le sexe s'il manque
+async function importModuleData(m,p){
+ const pre=m.id+':',rows={grades:[],results:[],students:[],sessions:[]};let skipped=0;
+ // Résultats rattachés à la séance de la classe ce jour-là ; sans séance prévue, une séance ponctuelle est créée.
+ const sessionFor=(classId,date)=>{
+  if(!find('classes',classId)||!/^\d{4}-\d{2}-\d{2}$/.test(date||''))return null;
+  const l=data.sessions.filter(s=>s.classId===classId&&s.date===date).sort(byDate);
+  let s=l.find(active)||l[0]||rows.sessions.find(x=>x.classId===classId&&x.date===date);
+  if(!s){s={id:pre+classId+':'+date,classId,date,name:m.name,duration:'55'};rows.sessions.push(s)}
+  return s};
+ for(const g of p?.grades||[]){if(!find('students',g.studentId)||g.grade==null){skipped++;continue}
+  rows.grades.push({id:pre+g.key,student:g.studentId,name:String(g.name||m.name),grade:String(g.grade),date:String(g.date||today()),module:m.name})}
+ for(const r of p?.results||[]){const s=sessionFor(r.classId,r.date);if(!s||(r.studentId&&!find('students',r.studentId))){skipped++;continue}
+  rows.results.push({id:pre+r.key,sessionId:s.id,module:m.name,student:String(r.studentId||''),label:String(r.label||''),value:String(r.value??''),unit:String(r.unit||''),date:String(r.date)})}
+ for(const x of p?.summaries||[]){const s=sessionFor(x.classId,x.date);if(!s){skipped++;continue}
+  rows.results.push({id:pre+x.key,sessionId:s.id,module:m.name,student:'',label:'Résumé',value:String(x.text||''),unit:'',date:String(x.date)})}
+ for(const u of p?.studentUpdates||[]){const st=find('students',u.studentId);if(st&&!st.sex&&['F','G'].includes(u.sex))rows.students.push({...st,sex:u.sex})}
+ const changed=Object.fromEntries(Object.entries(rows).map(([k,list])=>[k,list.filter(r=>JSON.stringify(find(k,r.id))!==JSON.stringify(r))]));
+ changed.sessions=rows.sessions.filter(r=>!find('sessions',r.id));
+ const n=Object.values(changed).reduce((a,l)=>a+l.length,0);
+ if(n){await transaction(Object.keys(changed),t=>{for(const [k,list] of Object.entries(changed))list.forEach(r=>t.objectStore(k).put(r))});await load()}
+ return {grades:rows.grades.length,results:rows.results.filter(r=>r.student).length,summaries:rows.results.filter(r=>!r.student).length,changed:n,skipped};
+}
+async function syncModule(m,{quiet=false}={}){
+ try{
+  const a=await adapterOf(m);if(!a?.collect)return null;
+  const r=await importModuleData(m,await a.collect(moduleContext(m)));
+  moduleSync[m.id]={at:new Date(),...r};
+  if(!quiet)notify(m.name+' · '+(r.changed?plural(r.grades,'note')+', '+plural(r.results,'résultat')+', '+plural(r.summaries,'résumé')+' à jour':'rien de nouveau')+'.');
+  return r;
+ }catch{if(!quiet)notify(m.name+' : synchronisation impossible.');return null}
+}
+async function syncAllModules(){await modulesReady;let changed=0;for(const m of modules){const r=await syncModule(m,{quiet:true});changed+=r?.changed||0}return changed}
+function leaveModule(){
+ clearInterval(moduleTimer);moduleTimer=null;document.body.classList.remove('module-mode');
+ if(openModule){const m=openModule;openModule=null;syncModule(m).then(r=>{if(r?.changed)render()})}
+}
+async function renderModule(id){
+ await modulesReady;
+ const m=modules.find(x=>x.id===id);
+ if(!m){el('p','Module introuvable. Vérifiez le dossier modules/'+id+'/ et sa déclaration dans Réglages › Paramètres.',view,'empty');return}
+ document.querySelector('h1').textContent=m.name;document.title=m.name+' · EPS Manager';
+ if(m.missing){el('p','Le dossier modules/'+m.id+'/ ou son fichier eps-module.json est introuvable.',view,'notice');return}
+ document.body.classList.add('module-mode');
+ const bar=el('div','',view,'module-bar');
+ link(bar,sessionReturn||'home','← EPS Manager','btn small');
+ el('strong',m.name,bar);
+ const status=el('span','Préparation des classes…',bar,'muted');
+ const sync=button('Synchroniser',bar,'small primary');
+ const frame=el('iframe','',view,'module-frame');frame.title=m.name;frame.setAttribute('allow','camera; microphone; fullscreen; clipboard-write');
+ const refresh=()=>{const s=moduleSync[m.id];status.textContent=s?'Synchronisé à '+s.at.toLocaleTimeString('fr',{hour:'2-digit',minute:'2-digit'})+' · '+plural(s.grades,'note')+' · '+plural(s.results,'résultat'):'Les notes et résultats reviennent dans EPS Manager automatiquement.'};
+ sync.onclick=async()=>{sync.disabled=true;await syncModule(m);refresh();sync.disabled=false};
+ try{const a=await adapterOf(m);if(a?.beforeOpen)await a.beforeOpen(moduleContext(m))}catch{notify('Les classes n’ont pas pu être recopiées dans '+m.name+'.')}
+ if(!frame.isConnected)return;
+ frame.src=m.base+m.entry;openModule=m;refresh();
+ moduleTimer=setInterval(async()=>{if(!frame.isConnected)return;await syncModule(m,{quiet:true});refresh()},20000);
+}
+let sessionReturn='';
+function moduleButtons(parent,s){
+ const usable=modules.filter(m=>!m.missing);
+ for(const m of usable){const a=link(parent,'module='+m.id,'Ouvrir '+m.name,'btn');a.onclick=()=>{sessionReturn='session='+s.id}}
+}
+function renderModulesSettings(){
+ const p=panel(view,'Modules');
+ el('p','Un module est une application ajoutée dans le dossier modules/ de l’application. Elle reçoit vos classes et élèves, et renvoie ses notes, ses résultats et le résumé de chaque séance.',p,'muted');
+ if(!modules.length)el('p','Aucun module trouvé.',p,'empty');
+ for(const m of modules){
+  const r=el('div','',p,'row hist');const b=el('div','',r,'body');
+  el('span',m.name+(m.missing?' · introuvable':''),b,'title');
+  const s=moduleSync[m.id];
+  el('span',['dossier modules/'+m.id+'/',m.description,m.adapter?(s?'synchronisé à '+s.at.toLocaleTimeString('fr',{hour:'2-digit',minute:'2-digit'}):'liaison prête'):'sans liaison (ouverture seule)'].filter(Boolean).join(' · '),b,'meta');
+  if(!m.missing){link(r,'module='+m.id,'Ouvrir','btn small');if(m.adapter)button('Synchroniser',r,'small').onclick=async()=>{await syncModule(m);render()}}
+  if(m.fromSettings)iconButton('trash','Retirer de la liste',r,'danger').onclick=async()=>{await transaction('settings',t=>t.objectStore('settings').put({...settings(),modules:extraModules().filter(x=>x!==m.id).join(',')}));await load();modulesReady=discoverModules();await modulesReady;render()};
+ }
+ const f=el('form','',p,'filters');
+ const inp=el('input','',el('label','Ajouter un module (nom du dossier dans modules/)',f));inp.placeholder='ex. demi-fond';inp.required=true;
+ el('button','Ajouter',f,'primary');
+ f.onsubmit=async e=>{e.preventDefault();const n=inp.value.trim();if(!moduleNameOk(n))return notify('Nom de dossier invalide (lettres, chiffres, - et _).');
+  await transaction('settings',t=>t.objectStore('settings').put({...settings(),modules:[...new Set([...extraModules(),n])].join(',')}));await load();modulesReady=discoverModules();await modulesReady;render();
+  notify(modules.find(x=>x.id===n)?.missing?'Dossier modules/'+n+'/ introuvable ou sans eps-module.json.':'Module ajouté.')};
+}
+
 // ---------- Recherche ----------
 function renderSearch(q){
  const norm=s=>(s||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase();
@@ -1214,5 +1345,9 @@ function importPanel(){
 window.onunhandledrejection=()=>notify('Opération interrompue. Vérifiez le stockage disponible.');
 search.oninput=()=>render();
 window.onhashchange=()=>{search.value='';render();window.scrollTo(0,0)};
-await load();await migrateAttendance();render();
+await load();await migrateAttendance();
+modulesReady=discoverModules();
+render();
+// Au démarrage : modules dans le menu, puis reprise de leurs notes et résultats.
+modulesReady.then(()=>{buildNav();return syncAllModules()}).then(n=>{if(n&&!location.hash.startsWith('#module'))render()});
 if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js');

@@ -299,6 +299,17 @@ pre.code{background:#f4f6f1;border-radius:12px;padding:12px;font-size:12px;overf
 .sq.ok{color:var(--primary)}
 .legend .dot{width:22px;height:22px}
 
+/* ---------- Modules ---------- */
+body.module-mode .sidebar,body.module-mode .topbar{display:none}
+body.module-mode main{padding:10px 12px calc(10px + env(safe-area-inset-bottom));max-width:none;gap:10px}
+body.module-mode #view{gap:10px}
+.module-bar{display:flex;flex-wrap:wrap;align-items:center;gap:10px 14px}
+.module-bar strong{font-size:17px}
+.module-bar .muted{flex:1;min-width:200px;font-size:13px}
+.module-frame{width:100%;height:calc(100vh - 84px);height:calc(100dvh - 84px);border:1px solid var(--line);border-radius:16px;background:#fff}
+.module-summary{display:flex;flex-direction:column;gap:6px}
+.module-summary .row{background:#f1f6e6}
+
 /* ---------- Tablette portrait ---------- */
 @media (max-width:1023px){
   .sidebar{width:212px;padding-inline:10px}
