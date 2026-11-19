@@ -12,7 +12,7 @@ Aucune installation dans le dépôt, aucun build.
 node --test --test-concurrency=1 tests/e2e/*.test.mjs
 ```
 
-Un seul fichier : `node --test tests/e2e/05-sauvegarde.test.mjs`. Durée totale : environ 1 min 30.
+Un seul fichier : `node --test tests/e2e/05-sauvegarde.test.mjs`. Durée totale : environ 2 minutes.
 
 ## Contenu
 
@@ -25,6 +25,7 @@ Un seul fichier : `node --test tests/e2e/05-sauvegarde.test.mjs`. Durée totale 
 | `05-sauvegarde` | 8 : sauvegarde → effacement total → restauration identique (magasins, identifiants, photos, localStorage, bases des applications avec fichiers) ; fichiers tronqués, version future, valeurs invalides refusés sans modification |
 | `06-applications` | 6, 7 : modules déclarés, pages d'entrée, liaisons SDK v1 (`collect`), aucune liaison en erreur, tableaux |
 | `07-securite` | injection HTML dans un prénom affichée en texte, jamais exécutée |
+| `08-restauration-sure` | 8 (lot 0.2) : inventaire et SHA-256 dans le fichier, fichier modifié refusé, ancien fichier accepté, échec en cours de restauration → retour automatique complet, annulation de la dernière restauration, reprise d'une restauration interrompue, copie avant les données d'exemple |
 
 ## Organisation
 

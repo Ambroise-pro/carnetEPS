@@ -2,53 +2,11 @@
 // sauvegardes corrompues ou de version future refusées sans toucher aux données.
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {writeFile, mkdtemp, readFile} from 'node:fs/promises';
+import {writeFile, mkdtemp} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {open, go, readStores, settle} from '../helpers.mjs';
+import {open, readStores, readExtra, sortById, IGNORED_KEYS as ignore, exportFile, restoreFile, wipeEverything} from '../helpers.mjs';
 import {PHOTO} from '../fixtures/donnees-fictives.mjs';
-
-// Contenu des autres bases IndexedDB et du localStorage, Blob compris (lu en texte).
-const readExtra = page => page.evaluate(async () => {
-  const req = r => new Promise((ok, no) => { r.onsuccess = () => ok(r.result); r.onerror = () => no(r.error); });
-  const out = {localStorage: {}, dbs: {}};
-  for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); out.localStorage[k] = localStorage.getItem(k); }
-  for (const name of ['mon-tableau-blanc-documents', 'chrono-eps']) {
-    const db = await req(indexedDB.open(name)); out.dbs[name] = {};
-    for (const s of db.objectStoreNames) {
-      const st = db.transaction(s).objectStore(s);
-      const [keys, vals] = await Promise.all([req(st.getAllKeys()), req(st.getAll())]);
-      out.dbs[name][s] = await Promise.all(vals.map(async (v, i) => [keys[i], v && v.blob instanceof Blob ? {...v, blob: 'Blob:' + await v.blob.text()} : v]));
-    }
-    db.close();
-  }
-  return out;
-});
-const sortById = o => Object.fromEntries(Object.entries(o).map(([k, l]) => [k, [...l].sort((a, b) => a.id.localeCompare(b.id))]));
-const ignore = ['eps-last-backup', 'eps-backup-snooze']; // horodatages mis à jour par l'export lui-même
-
-async function exportFile(page) {
-  await go(page, 'backup');
-  const [dl] = await Promise.all([page.waitForEvent('download'), page.locator('button', {hasText: 'Télécharger le fichier'}).first().click()]);
-  const file = await dl.path();
-  return {file, json: JSON.parse(await readFile(file, 'utf8'))};
-}
-async function restoreFile(page, file) {
-  await go(page, 'backup');
-  await page.setInputFiles('input[type=file][accept*=json]', file);
-  await page.waitForTimeout(1500);
-}
-async function wipeEverything(page) {
-  await page.evaluate(async () => {
-    const req = r => new Promise((ok, no) => { r.onsuccess = () => ok(r.result); r.onerror = () => no(r.error); });
-    const db = await req(indexedDB.open('eps-manager'));
-    await new Promise(ok => { const t = db.transaction(db.objectStoreNames, 'readwrite'); for (const s of db.objectStoreNames) t.objectStore(s).clear(); t.oncomplete = ok; });
-    db.close();
-    for (const n of ['mon-tableau-blanc-documents', 'chrono-eps']) await new Promise(ok => { const r = indexedDB.deleteDatabase(n); r.onsuccess = r.onerror = r.onblocked = ok; });
-    localStorage.clear();
-  });
-  await page.reload(); await settle(page, 800);
-}
 
 test('sauvegarde → effacement total → restauration : tout est retrouvé à l’identique', async () => {
   const {page, errors, close} = await open();

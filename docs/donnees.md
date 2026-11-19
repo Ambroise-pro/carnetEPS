@@ -1,4 +1,4 @@
-# Données d'EPS Manager : inventaire (version 25)
+# Données d'EPS Manager : inventaire (version 27)
 
 Document de référence de la phase 0 (lot 0.1). À mettre à jour à chaque changement de format.
 Toutes les données restent **sur l'appareil** ; rien n'est envoyé à un serveur, sauf les fonctions listées en fin de document.
@@ -58,17 +58,28 @@ Suppressions en cascade : table `deps` dans `app.js` (ex. supprimer une classe s
 Fichier JSON `eps-manager-AAAA-MM-JJ.json` produit par `exportBackup()` :
 
 ```json
-{ "version": 3, "createdAt": "ISO", "appVersion": 25,
+{ "version": 3, "createdAt": "ISO", "appVersion": 27,
   "data":  { "<magasin>": [ {enregistrements} ] },
+  "manifest": { "counts": { "<magasin>": n }, "localStorage": n, "indexedDB": [ { "name", "stores": { "<magasin>": n } } ], "sha256": "…" },
   "extra": { "localStorage": { "<clé>": "<valeur>" },
              "indexedDB": [ { "name", "version", "stores": [ { "name", "keyPath", "autoIncrement", "indexes", "records": [[clé, valeur]] } ] } ] } }
 ```
 
 - `extra.indexedDB` : toutes les bases du site sauf `eps-manager`, listées par `indexedDB.databases()` ; à défaut, liste de secours `KNOWN_DBS`.
   Les fichiers (Blob/File) sont convertis en `{"__epsBlob": "data:…", name, type}`.
-- Restauration (`renderBackup`) : versions acceptées 1, 2, 3 ; magasins manquants des versions 1–2 complétés ;
-  refus si un enregistrement n'a pas d'`id` texte ou contient une valeur non texte. Les 16 magasins sont remplacés **en une transaction** ;
-  ensuite le localStorage est réécrit clé par clé et chaque base d'application est **supprimée puis recréée**.
+- `manifest` (depuis la v27, champ additionnel ignoré par les anciennes versions) : nombre d'enregistrements par magasin et
+  SHA-256 de `JSON.stringify({data, extra})`. Absent des anciens fichiers, qui restent acceptés.
+- Vérification complète **avant** toute écriture (`checkBackup`) : versions 1 à 3 (une version supérieure est refusée avec un message
+  « mettez l'application à jour »), somme de contrôle et comptes si l'inventaire est présent, `id` texte unique, valeurs texte, structure de `extra`.
+- Restauration (`safeRestore`) :
+  1. copie complète de l'état actuel dans la base locale `eps-manager-restore-point` (point de restauration, **pas une sauvegarde externe**) ;
+  2. journal `eps-restore-journal` (localStorage) ;
+  3. écriture : les 16 magasins en une transaction, puis le localStorage, puis chaque base d'application supprimée et recréée ;
+  4. en cas d'erreur, retour automatique à la copie (y compris retrait des clés et bases apportées par la sauvegarde ratée) ;
+  5. si l'application est coupée pendant l'écriture, le journal reste : au démarrage suivant, elle propose de revenir à la copie.
+- Page Sauvegardes › « Annuler la dernière restauration » : revient à la copie (en gardant l'état actuel comme nouvelle copie).
+  « Charger les données d'exemple » fait aussi une copie avant de remplacer les données.
+- `eps-manager-restore-point` et `eps-restore-journal` ne sont jamais inclus dans une sauvegarde ni écrasés par une restauration.
 - La sauvegarde contient des données sensibles en clair (élèves, photos, besoins particuliers, clé Gemini, empreinte du code de verrouillage).
 
 ## 5. Cache hors ligne (`sw.js`)
@@ -86,7 +97,8 @@ Fichier JSON `eps-manager-AAAA-MM-JJ.json` produit par `exportBackup()` :
 
 ## 7. Points de vigilance relevés (à traiter dans les lots suivants)
 
-1. Restauration non atomique pour les bases des applications (suppression puis recréation, sans copie préalable).
-2. Pas d'inventaire ni de somme de contrôle dans le fichier de sauvegarde.
-3. `KNOWN_DBS` ne contient pas `chrono-eps` ni `df-scan-ccf-backups` (navigateurs sans `indexedDB.databases()`).
+1. ~~Restauration non atomique sans copie préalable~~ : corrigé en v27 (copie, retour automatique, reprise au démarrage).
+2. ~~Pas d'inventaire ni de somme de contrôle~~ : corrigé en v27.
+3. ~~`KNOWN_DBS` incomplète~~ : corrigé en v27 (`chrono-eps`, `df-scan-ccf-backups`, `eps-hub-pf` ajoutées).
 4. `modules/` et `vendor/` non préchargés pour le hors ligne.
+5. Le point de restauration double l'espace occupé pendant qu'il existe (photos comprises) ; un seul point est gardé.

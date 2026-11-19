@@ -1,6 +1,6 @@
 // Numéro de version affiché dans l'application : l'incrémenter à chaque nouvelle livraison
 // (et le reporter dans sw.js pour renouveler le cache hors ligne).
-const APP_VERSION=26;
+const APP_VERSION=27;
 
 // ---------- Structure de l'application ----------
 const pages={home:'Tableau de bord',calendar:'Calendrier',sessions:'Séances',attendance:'Appel',classes:'Classes',students:'Élèves',groups:'Groupes',cycles:'Cycles',restrictions:'Inaptitudes',grades:'Évaluations',comments:'Appréciations',observations:'Observations',planning:'Paramètres du calendrier',absences:'Absences',settings:'Paramètres',student:'Fiche élève',session:'Séance',boards:'Tableaux',board:'Tableau',module:'Application',apps:'Applications',averages:'Moyennes',years:'Années scolaires',backup:'Sauvegardes'};
@@ -567,17 +567,13 @@ function renderBackup(){
  const r=panel(view,'Restaurer');
  el('p','La restauration remplace toutes les données de cet appareil, celles des applications comprises.',r,'muted');
  const input=el('input','',el('label','Fichier de sauvegarde (.json)',r));input.type='file';input.accept='.json,application/json';
- input.onchange=async()=>{try{
-  const b=JSON.parse(await input.files[0].text());
-  if(![1,2,3].includes(b.version)||!b.data||typeof b.data!=='object')throw Error();
-  for(const key of ['holidays','timetable','settings','results','boards'])b.data[key]??=[];
-  if(!stores.every(key=>Array.isArray(b.data[key])&&b.data[key].every(r=>r&&typeof r.id==='string'&&Object.values(r).every(v=>typeof v==='string'))))throw Error();
-  const apps=appsInBackup(b.extra);
-  if(!confirm('Remplacer toutes les données de cet appareil par cette sauvegarde'+(b.createdAt?' du '+new Date(b.createdAt).toLocaleDateString('fr'):'')+' ?'+(apps.length?'\n\nElle contient aussi les données de : '+apps.join(', ')+'.':'\n\nCette sauvegarde ne contient pas de données d’applications (ancienne version).')))return;
-  await transaction(stores,t=>{for(const key of stores){const st=t.objectStore(key);st.clear();b.data[key].forEach(r=>st.add(r))}});
-  if(b.extra)await restoreExtra(b.extra);
-  await load();await migrateAttendance();modulesReady=discoverModules();render();notify('Sauvegarde restaurée'+(apps.length?' avec '+apps.join(', '):'')+'.');
- }catch{notify('Restauration impossible. Vérifiez le fichier.')}};
+ input.onchange=async()=>{const file=input.files[0];input.value='';if(!file)return;
+  let b;try{b=JSON.parse(await file.text());await checkBackup(b)}catch(e){notify('Restauration impossible : '+(e instanceof SyntaxError?'fichier illisible ou incomplet':e.message||'vérifiez le fichier')+'. Vos données n’ont pas été modifiées.');return}
+  const apps=appsInBackup(b.extra),n=k=>(b.data[k]||[]).length;
+  if(!confirm('Remplacer toutes les données de cet appareil par cette sauvegarde'+(b.createdAt?' du '+new Date(b.createdAt).toLocaleDateString('fr'):'')+' ?\n\nElle contient : '+[plural(n('classes'),'classe'),plural(n('students'),'élève'),plural(n('sessions'),'séance'),plural(n('grades'),'note')].join(', ')+'.'+(apps.length?'\nAvec les données de : '+apps.join(', ')+'.':'\nSans données d’applications (ancienne version).')+(b.manifest?'\nFichier vérifié (somme de contrôle correcte).':'')+'\n\nUne copie de vos données actuelles est gardée sur l’appareil pour pouvoir annuler.'))return;
+  if(await safeRestore(b,'avant la restauration de la sauvegarde'+(b.createdAt?' du '+new Date(b.createdAt).toLocaleDateString('fr'):'')))notify('Sauvegarde restaurée'+(apps.length?' avec '+apps.join(', '):'')+'.');
+ };
+ restorePointPanel();
  const s=panel(view,'Données d’exemple');
  el('p','Deux classes (5e B et 4e A) avec élèves, emploi du temps, vacances, cycles, appels passés, notes et observations, pour découvrir l’application. Remplace les données actuelles.',s,'muted');
  const sb=button('Charger les données d’exemple',s);sb.style.alignSelf='start';sb.onclick=loadSample;
@@ -586,7 +582,8 @@ function renderBackup(){
 // ---------- Données d'exemple ----------
 async function loadSample(){
  const hasData=stores.some(k=>data[k].length);
- if(hasData&&!confirm('Remplacer toutes les données de cet appareil par les données d’exemple ?\n\nPensez à exporter une sauvegarde avant si besoin.'))return;
+ if(hasData&&!confirm('Remplacer toutes les données de cet appareil par les données d’exemple ?\n\nUne copie de vos données actuelles est gardée sur l’appareil (Sauvegardes › Annuler la dernière restauration).'))return;
+ if(hasData)try{await saveRestorePoint('avant le chargement des données d’exemple')}catch{if(!confirm('Impossible de garder une copie des données actuelles. Continuer quand même ?'))return}
  let seed=42;const rnd=()=>{seed=(seed*1664525+1013904223)%4294967296;return seed/4294967296};
  const y={id:'ex-year',name:'2026-2027',start:'2026-09-01',end:'2027-07-03',firstWeek:'A'};
  const holidays=[['Toussaint','2026-10-17','2026-11-01'],['11 Novembre','2026-11-11','2026-11-11'],['Noël','2026-12-19','2027-01-03'],['Hiver','2027-02-13','2027-02-28'],['Lundi de Pâques','2027-03-29','2027-03-29'],['Printemps','2027-04-10','2027-04-25'],['Pont de l’Ascension','2027-05-06','2027-05-09'],['Lundi de Pentecôte','2027-05-17','2027-05-17']].map(([name,start,end],i)=>({id:'ex-hol'+i,year:y.id,name,start,end}));
@@ -1653,7 +1650,8 @@ function lockSettings(){
 // ---------- Sauvegarde complète : EPS Manager + données des applications ----------
 // Les applications associées sont servies depuis la même adresse : leurs données (localStorage, bases IndexedDB)
 // sont dans le même espace que celles d'EPS Manager. La sauvegarde les reprend toutes, sans réglage par application.
-const KNOWN_DBS=['mon-tableau-blanc-documents','scan-document-eps-v1','eps-hub-photos'];
+// Bases des applications, pour les navigateurs qui ne savent pas lister leurs bases (indexedDB.databases()).
+const KNOWN_DBS=['mon-tableau-blanc-documents','scan-document-eps-v1','eps-hub-photos','chrono-eps','df-scan-ccf-backups','eps-hub-pf'];
 async function blobsOut(v){
  if(v instanceof Blob)return {__epsBlob:await new Promise((ok,no)=>{const r=new FileReader();r.onload=()=>ok(r.result);r.onerror=()=>no(r.error);r.readAsDataURL(v)}),type:v.type,name:v.name||''};
  if(Array.isArray(v))return Promise.all(v.map(blobsOut));
@@ -1685,7 +1683,7 @@ async function dumpDB(name){
 async function restoreDB(dump){
  await new Promise(ok=>{const r=indexedDB.deleteDatabase(dump.name);r.onsuccess=r.onerror=r.onblocked=()=>ok()});
  const db=await new Promise((ok,no)=>{const r=indexedDB.open(dump.name,dump.version||1);
-  r.onupgradeneeded=()=>{for(const s of dump.stores){const st=r.result.createObjectStore(s.name,{keyPath:s.keyPath??undefined,autoIncrement:!!s.autoIncrement});for(const i of s.indexes||[])st.createIndex(i.name,i.keyPath,{unique:!!i.unique,multiEntry:!!i.multiEntry})}};
+  r.onupgradeneeded=()=>{try{for(const s of dump.stores){const st=r.result.createObjectStore(s.name,{keyPath:s.keyPath??undefined,autoIncrement:!!s.autoIncrement});for(const i of s.indexes||[])st.createIndex(i.name,i.keyPath,{unique:!!i.unique,multiEntry:!!i.multiEntry})}}catch(e){r.transaction.abort()}};
   r.onsuccess=()=>ok(r.result);r.onerror=()=>no(r.error)});
  try{
   for(const s of dump.stores){
@@ -1695,15 +1693,92 @@ async function restoreDB(dump){
  }finally{db.close()}
 }
 async function collectExtra(){
- const ls={};for(let i=0;i<localStorage.length;i++){const k=localStorage.key(i);if(k!=null)ls[k]=localStorage.getItem(k)}
+ const ls={};for(let i=0;i<localStorage.length;i++){const k=localStorage.key(i);if(k!=null&&k!==JOURNAL)ls[k]=localStorage.getItem(k)}
  let names=KNOWN_DBS;
  try{if(indexedDB.databases)names=[...new Set([...(await indexedDB.databases()).map(d=>d.name).filter(Boolean),...KNOWN_DBS])]}catch{}
- const dbs=[];for(const n of names.filter(n=>n!=='eps-manager')){try{const d=await dumpDB(n);if(d&&d.stores.length)dbs.push(d)}catch{}}
+ const dbs=[];for(const n of names.filter(n=>n!=='eps-manager'&&n!==RP_DB)){try{const d=await dumpDB(n);if(d&&d.stores.length)dbs.push(d)}catch{}}
  return {localStorage:ls,indexedDB:dbs};
 }
 async function restoreExtra(x){
- for(const [k,v] of Object.entries(x?.localStorage||{}))if(typeof v==='string')try{localStorage.setItem(k,v)}catch{}
- for(const d of x?.indexedDB||[])if(d&&typeof d.name==='string'&&d.name!=='eps-manager'&&Array.isArray(d.stores))await restoreDB(d);
+ for(const [k,v] of Object.entries(x?.localStorage||{}))if(typeof v==='string'&&k!==JOURNAL)try{localStorage.setItem(k,v)}catch{}
+ for(const d of x?.indexedDB||[])if(d&&typeof d.name==='string'&&d.name!=='eps-manager'&&d.name!==RP_DB&&Array.isArray(d.stores))await restoreDB(d);
+}
+// ---------- Restauration sûre : vérification, copie préalable, retour arrière, reprise ----------
+// Le point de restauration est une copie LOCALE (même appareil) : ce n'est pas une sauvegarde externe.
+const RP_DB='eps-manager-restore-point',JOURNAL='eps-restore-journal';
+async function sha256(text){if(!crypto?.subtle)return '';const h=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(text));return [...new Uint8Array(h)].map(b=>b.toString(16).padStart(2,'0')).join('')}
+// Inventaire ajouté au fichier (champ additionnel : les anciennes versions l'ignorent).
+async function manifestOf(d,extra){return {counts:Object.fromEntries(stores.map(k=>[k,(d[k]||[]).length])),localStorage:Object.keys(extra?.localStorage||{}).length,indexedDB:(extra?.indexedDB||[]).map(x=>({name:x.name,stores:Object.fromEntries(x.stores.map(s=>[s.name,s.records.length]))})),sha256:await sha256(JSON.stringify({data:d,extra}))}}
+async function backupObject(){const extra=await collectExtra();return {version:3,createdAt:new Date().toISOString(),appVersion:APP_VERSION,data,extra,manifest:await manifestOf(data,extra)}}
+// Vérifie tout le fichier AVANT de toucher aux données ; lève une erreur au message lisible.
+async function checkBackup(b){
+ if(!b||typeof b!=='object'||!b.data||typeof b.data!=='object')throw Error('ce n’est pas une sauvegarde EPS Manager');
+ if(typeof b.version==='number'&&b.version>3)throw Error('sauvegarde faite par une version plus récente d’EPS Manager : mettez l’application à jour');
+ if(![1,2,3].includes(b.version))throw Error('format de sauvegarde inconnu');
+ if(b.manifest){
+  const h=await sha256(JSON.stringify({data:b.data,extra:b.extra}));
+  if(h&&b.manifest.sha256&&h!==b.manifest.sha256)throw Error('le fichier a été modifié ou abîmé (somme de contrôle différente)');
+  for(const [k,n] of Object.entries(b.manifest.counts||{}))if((b.data[k]||[]).length!==n)throw Error('nombre d’enregistrements incohérent ('+k+')');
+ }
+ for(const key of ['holidays','timetable','settings','results','boards'])b.data[key]??=[];
+ for(const key of stores){if(!Array.isArray(b.data[key])||!b.data[key].every(r=>r&&typeof r.id==='string'&&Object.values(r).every(v=>typeof v==='string')))throw Error('enregistrement invalide ('+key+')');if(new Set(b.data[key].map(r=>r.id)).size!==b.data[key].length)throw Error('identifiants en double ('+key+')')}
+ const x=b.extra;
+ if(x!=null&&(typeof x!=='object'||(x.localStorage!=null&&typeof x.localStorage!=='object')||(x.indexedDB!=null&&!Array.isArray(x.indexedDB))||(x.indexedDB||[]).some(d=>!d||typeof d.name!=='string'||!Array.isArray(d.stores)||d.stores.some(s=>!s||typeof s.name!=='string'||!Array.isArray(s.records)))))throw Error('données des applications illisibles');
+}
+const rpDB=()=>new Promise((ok,no)=>{const r=indexedDB.open(RP_DB,1);r.onupgradeneeded=()=>r.result.createObjectStore('points',{keyPath:'id'});r.onsuccess=()=>ok(r.result);r.onerror=()=>no(r.error)});
+async function restorePoint(){const db=await rpDB();try{return await reqP(db.transaction('points').objectStore('points').get('last'))}finally{db.close()}}
+// Copie l'état actuel complet (EPS Manager + applications) et renvoie cette copie, indépendante des données vivantes.
+async function saveRestorePoint(label){
+ const json=JSON.stringify(await backupObject()),db=await rpDB();
+ try{await new Promise((ok,no)=>{const t=db.transaction('points','readwrite');t.objectStore('points').put({id:'last',label,createdAt:new Date().toISOString(),json});t.oncomplete=ok;t.onerror=t.onabort=()=>no(t.error)})}finally{db.close()}
+ return JSON.parse(json);
+}
+// Écrit une sauvegarde vérifiée. `exact` : retour à un état antérieur (retire aussi ce qui n'existait pas dans la copie).
+async function applyBackup(b,exact=false,also=[]){
+ await transaction(stores,t=>{for(const key of stores){const st=t.objectStore(key);st.clear();(b.data[key]||[]).forEach(r=>st.add(r))}});
+ if(exact){
+  const keep=b.extra?.localStorage||{};for(const k of Object.keys(localStorage))if(!(k in keep)&&k!==JOURNAL)localStorage.removeItem(k);
+  let names=[...also];try{if(indexedDB.databases)names.push(...(await indexedDB.databases()).map(d=>d.name).filter(Boolean))}catch{}
+  const kept=new Set((b.extra?.indexedDB||[]).map(d=>d.name));
+  for(const n of new Set(names))if(n!=='eps-manager'&&n!==RP_DB&&!kept.has(n))await new Promise(ok=>{const r=indexedDB.deleteDatabase(n);r.onsuccess=r.onerror=r.onblocked=()=>ok()});
+ }
+ if(b.extra)await restoreExtra(b.extra);
+}
+const setJournal=v=>{try{v?localStorage.setItem(JOURNAL,JSON.stringify(v)):localStorage.removeItem(JOURNAL)}catch{}};
+async function afterRestore(){await load();await migrateAttendance();modulesReady=discoverModules();render()}
+// Restauration en trois temps : copie de l'état actuel, écriture, et en cas d'échec retour automatique à la copie.
+async function safeRestore(b,label){
+ let snap=null;
+ try{snap=await saveRestorePoint(label)}catch{if(!confirm('Impossible de garder une copie des données actuelles (stockage plein ?).\n\nRestaurer quand même, sans possibilité d’annuler ?'))return false}
+ setJournal({startedAt:new Date().toISOString(),label});
+ try{await applyBackup(b)}catch{
+  if(snap)try{await applyBackup(snap,true,(b.extra?.indexedDB||[]).map(d=>d.name));setJournal(null);await afterRestore();notify('Restauration impossible : vos données d’avant ont été remises.');return false}catch{}
+  await afterRestore();notify('Restauration interrompue. Rechargez l’application pour revenir aux données d’avant.');return false;
+ }
+ setJournal(null);await afterRestore();return true;
+}
+// Au démarrage : une restauration a été coupée (fermeture, panne de batterie…) → proposer de revenir à la copie.
+async function interruptedRestore(){
+ let j=null;try{j=JSON.parse(localStorage.getItem(JOURNAL)||'null')}catch{}
+ if(!j)return false;
+ const rp=await restorePoint().catch(()=>null);
+ const d=sheet('Restauration interrompue');
+ el('p','Une restauration commencée le '+new Date(j.startedAt).toLocaleString('fr')+' ne s’est pas terminée : les données peuvent être incomplètes.',d);
+ if(rp)el('p','Une copie des données d’avant a été gardée sur l’appareil ('+rp.label+').',d,'muted');
+ const a=el('div','',d,'actions');
+ if(rp)button('Revenir aux données d’avant',a,'primary').onclick=async e=>{e.currentTarget.disabled=true;try{await applyBackup(JSON.parse(rp.json),true);setJournal(null);d.close();await afterRestore();notify('Les données d’avant la restauration ont été remises.')}catch{notify('Retour impossible. Restaurez votre dernière sauvegarde.')}};
+ button('Garder les données actuelles',a).onclick=()=>{setJournal(null);d.close()};
+ d.showModal();return true;
+}
+function restorePointPanel(){
+ const p=panel(view,'Annuler la dernière restauration');p.hidden=true;
+ restorePoint().then(rp=>{if(!rp)return;p.hidden=false;
+  el('p','Copie faite automatiquement '+rp.label+', le '+new Date(rp.createdAt).toLocaleString('fr',{dateStyle:'long',timeStyle:'short'})+'.',p);
+  el('p','Cette copie reste sur cet appareil : ce n’est pas une sauvegarde externe. Elle disparaît si les données du navigateur sont effacées.',p,'muted');
+  button('Revenir à cet état',p).onclick=async()=>{if(!confirm('Remplacer les données actuelles par la copie faite '+rp.label+' ?\n\nLes données actuelles seront gardées à leur tour pour pouvoir annuler.'))return;
+   let b;try{b=JSON.parse(rp.json);await checkBackup(b)}catch{return notify('Copie illisible.')}
+   if(await safeRestore(b,'avant l’annulation de la restauration'))notify('Données remises dans l’état d’avant.')};
+ }).catch(()=>{});
 }
 const appsInBackup=x=>{const l=Object.keys(x?.localStorage||{}),names=[];
  if(l.some(k=>/^(eps-hub|df-scan|cc_|chronoCarnet)/.test(k)))names.push('Demi-fond');if(l.includes('df-coeval-v1'))names.push('Co-évaluation Bac');
@@ -1988,7 +2063,7 @@ const backupEvery=()=>{const v=settings().backupEvery;return v==null||v===''?7:N
 const backupAge=()=>{const b=lastBackup();return b?Math.floor((Date.now()-new Date(b))/864e5):null};
 const hasData=()=>data.students.length>0||data.sessions.length>0;
 async function exportBackup(mode='download'){
- const extra=await collectExtra(),json=JSON.stringify({version:3,createdAt:new Date().toISOString(),appVersion:APP_VERSION,data,extra});
+ const b=await backupObject(),extra=b.extra,json=JSON.stringify(b);
  const name='eps-manager-'+today()+'.json',apps=appsInBackup(extra);
  if(mode==='share'){
   const file=new File([json],name,{type:'application/json'});
@@ -2177,5 +2252,5 @@ modulesReady=discoverModules();
 render();
 // Au démarrage : modules dans le menu, puis reprise de leurs notes et résultats.
 modulesReady.then(async()=>{buildNav();await checkModuleVersions();return syncAllModules()}).then(n=>{if(n&&!location.hash.startsWith('#module'))render()});
-setTimeout(()=>{if(!locked)weeklyBackupPrompt()},1500);
+setTimeout(async()=>{if(!locked&&!await interruptedRestore())weeklyBackupPrompt()},1500);
 if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js');

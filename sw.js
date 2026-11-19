@@ -1,5 +1,5 @@
 // Reporter ici le numéro APP_VERSION de app.js à chaque livraison.
-const VERSION=26,cache='eps-v'+VERSION;
+const VERSION=27,cache='eps-v'+VERSION;
 const shell=['./','index.html','app.js','style.css','manifest.webmanifest','icon.png','icon512.png','trombi.js','vendor/pdfjs/pdf.mjs','vendor/pdfjs/pdf.worker.mjs','board/board.js','board/board.css','board/host.js','board/host.css'];
 self.oninstall=e=>{self.skipWaiting();e.waitUntil(caches.open(cache).then(c=>c.addAll(shell)))};
 self.onactivate=e=>e.waitUntil(caches.keys().then(ks=>Promise.all(ks.filter(k=>k!==cache).map(k=>caches.delete(k)))).then(()=>self.clients.claim()));
