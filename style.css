@@ -175,6 +175,51 @@ dialog.sheet::backdrop{background:rgba(16,38,31,.45)}
 dialog.sheet p{margin:0}
 dialog.sheet .actions{margin-top:10px}
 
+
+/* ---------- Version ---------- */
+.brand-text{display:flex;flex-direction:column;line-height:1.15}
+.version{font-size:12px;font-weight:600;color:var(--side-muted)}
+
+/* ---------- Séances du jour ---------- */
+.today-panel{border-color:var(--primary)}
+.today-grid{display:grid;gap:12px;grid-template-columns:repeat(auto-fill,minmax(min(320px,100%),1fr))}
+.today-card{display:flex;gap:14px;align-items:center;padding:14px 16px;border-radius:16px;background:#f1f6e6;color:inherit;text-decoration:none;min-height:76px;flex-wrap:wrap}
+.today-card.now{background:var(--primary);color:#fff}
+.today-card.now .meta,.today-card.now .tc-time span{color:#cfe0d8}
+.today-card .body{display:flex;flex-direction:column;gap:2px;flex:1;min-width:150px}
+.today-card .title{font-weight:700;font-size:17px}
+.today-card .meta{font-size:13px;color:var(--muted)}
+.tc-time{display:flex;flex-direction:column;align-items:center;min-width:56px}
+.tc-time b{font-size:18px}
+.tc-time span{font-size:12px;color:var(--muted)}
+.today-card.cancelled{background:#f1f1ee;opacity:.8}
+.today-card.cancelled .title{text-decoration:line-through}
+
+/* ---------- Appel (présent par défaut) ---------- */
+.pupil{border:2px solid var(--line)}
+.pupil .st{background:#e5ebe3;color:var(--primary);min-width:26px;padding:0 6px}
+.pupil.flagged{border:2px solid var(--c)}
+.pupil.flagged .st{background:var(--c);color:var(--fg)}
+.st-label{font-size:12px;font-weight:700;color:var(--ink);background:#f4f6f1;border-radius:8px;padding:2px 8px;margin-top:2px}
+.status-grid{display:grid;gap:10px;grid-template-columns:repeat(auto-fill,minmax(190px,1fr))}
+.status-btn{justify-content:flex-start;min-height:60px;border-color:var(--line);color:var(--ink);font-size:16px;gap:12px}
+.status-btn[aria-pressed=true]{border:2px solid var(--primary);background:#f1f6e6}
+.status-btn .dot{width:32px;height:32px;border-radius:16px;font-size:12px}
+.saved{margin:0;font-weight:700;color:var(--primary);display:flex;align-items:center;min-height:48px}
+.hint{margin:0;font-weight:600;color:var(--primary);background:#f1f6e6;border-radius:12px;padding:12px 14px}
+
+/* ---------- Séances supprimées ---------- */
+.event.cancelled{background:#ecece8;color:#5a6560}
+.event.cancelled strong,.event.cancelled .ev-time{text-decoration:line-through}
+.event.cancelled .ev-name{font-weight:600;color:var(--warn-ink)}
+.chip.cancelled{background:#ecece8;text-decoration:line-through}
+.item.cancelled .title{text-decoration:line-through;color:var(--muted)}
+.choice-grid{display:grid;gap:8px;grid-template-columns:repeat(auto-fill,minmax(180px,1fr))}
+.choice{justify-content:flex-start;border-color:var(--line);color:var(--ink);font-weight:500;text-align:left;line-height:1.2}
+.choice[aria-pressed=true]{border:2px solid var(--primary);background:#f1f6e6;font-weight:700}
+.text-btn{border:0;background:none;color:var(--danger);font-size:14px;min-height:44px;padding:0;justify-content:flex-start;text-decoration:underline}
+dialog.sheet{width:min(560px,calc(100% - 32px));max-height:calc(100% - 32px);overflow:auto}
+
 /* ---------- Tablette portrait ---------- */
 @media (max-width:1023px){
   .sidebar{width:212px;padding-inline:10px}
@@ -186,7 +231,7 @@ dialog.sheet .actions{margin-top:10px}
 @media (max-width:699px){
   body{display:block}
   .sidebar{position:sticky;z-index:5;width:100%;height:auto;padding:10px 12px;gap:10px;flex-direction:row;align-items:center;overflow:visible}
-  .brand-name{display:none}
+  .brand-text{display:none}
   nav{flex-direction:row;overflow-x:auto;gap:4px;scrollbar-width:none}
   .nav-group{flex-direction:row;gap:4px}
   .nav-group>span{display:none}

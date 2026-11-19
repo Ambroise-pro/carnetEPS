@@ -1,3 +1,7 @@
+// Numéro de version affiché dans l'application : l'incrémenter à chaque nouvelle livraison
+// (et le reporter dans sw.js pour renouveler le cache hors ligne).
+const APP_VERSION=1;
+
 // ---------- Structure de l'application ----------
 const pages={home:'Tableau de bord',calendar:'Calendrier',sessions:'Séances',attendance:'Appel',classes:'Classes',students:'Élèves',groups:'Groupes',cycles:'Cycles',restrictions:'Inaptitudes',grades:'Évaluations',comments:'Appréciations',observations:'Observations',planning:'Paramètres du calendrier',years:'Années scolaires',backup:'Sauvegardes'};
 const navLabels={planning:'Emploi du temps'};
@@ -12,7 +16,7 @@ const icons={
  calendar:'M4 5h16v16H4zM4 10h16M8 3v4M16 3v4M8 14h2M14 14h2M8 17h2',
  sessions:'M5 4h14v16H5zM9 9h6M9 13h6M9 17h3',
  attendance:'M4 12l5 5L20 6',
- planning:'M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0M16 4v4M10 10v4M18 16v4',
+ planning:'M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M16 4v4M10 10v4M18 16v4',
  years:'M12 3v18M5 7h14M5 17h14',
  classes:'M4 5h16v14H4zM4 10h16M10 10v9',
  students:'M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM2 21c0-4 3-6 7-6s7 2 7 6M17 11a3 3 0 1 0 0-6M22 21c0-3-2-5-5-5.5',
@@ -43,7 +47,7 @@ const fields={
  classes:[['year','Année','years'],['name','Nom de la classe']],
  students:[['classId','Classe','classes'],['first','Prénom'],['last','Nom']],
  groups:[['classId','Classe','classes'],['name','Nom du groupe']],
- cycles:[['classId','Classe','classes'],['name','Activité / cycle'],['goal','Objectif']],
+ cycles:[['classId','Classe','classes'],['name','Activité / cycle'],['start','Début','date'],['end','Fin','date']],
  sessions:[['classId','Classe','classes'],['date','Date','date'],['time','Heure de début','time'],['duration','Durée','duration','110'],['name','Contenu de séance']],
  restrictions:[['student','Élève','students'],['start','Début','date'],['end','Fin','date'],['name','Adaptation de pratique']],
  grades:[['student','Élève','students'],['name','Épreuve'],['grade','Note sur 20','number']],
@@ -52,19 +56,39 @@ const fields={
  timetable:[['year','Année','years'],['classId','Classe','classes'],['weekday','Jour','weekday','1'],['time','Heure de début','time','08:00'],['duration','Durée','duration','110'],['freq','Fréquence','freq','all'],['name','Intitulé','text','EPS']],
  holidays:[['year','Année','years'],['name','Vacances'],['start','Premier jour','date'],['end','Dernier jour','date']]
 };
-const addTitles={timetable:'Ajouter un cours',holidays:'Ajouter une période de vacances',sessions:'Ajouter une séance ponctuelle'};
+const addTitles={timetable:'Ajouter un cours',holidays:'Ajouter une période de vacances',sessions:'Ajouter une séance ponctuelle',cycles:'Créer un cycle'};
 const listTitles={timetable:'Cours',holidays:'Périodes'};
-const nouns={years:['année','années'],classes:['classe','classes'],students:['élève','élèves'],groups:['groupe','groupes'],cycles:['cycle','cycles'],sessions:['séance','séances'],restrictions:['inaptitude','inaptitudes'],grades:['note','notes'],comments:['appréciation','appréciations'],observations:['observation','observations'],timetable:['cours de l’emploi du temps','cours de l’emploi du temps'],holidays:['période de vacances','périodes de vacances'],attendance:['présence','présences']};
+const nouns={years:['année','années'],classes:['classe','classes'],students:['élève','élèves'],groups:['groupe','groupes'],cycles:['cycle','cycles'],sessions:['séance','séances'],restrictions:['inaptitude','inaptitudes'],grades:['note','notes'],comments:['appréciation','appréciations'],observations:['observation','observations'],timetable:['cours de l’emploi du temps','cours de l’emploi du temps'],holidays:['période de vacances','périodes de vacances'],attendance:['mention d’appel','mentions d’appel']};
 const deps={years:[['classes','year'],['holidays','year'],['timetable','year']],classes:[['students','classId'],['groups','classId'],['cycles','classId'],['sessions','classId'],['timetable','classId']],students:[['restrictions','student'],['grades','student'],['comments','student'],['observations','student'],['attendance','student']],sessions:[['attendance','sessionId']]};
-const statuses=['Non renseigné','Présent','Absent','En retard','Excusé'];
-const statusKey={'Non renseigné':'?','Présent':'P','Absent':'A','En retard':'R','Excusé':'E'};
-const statusColor={'Présent':'var(--primary)','Absent':'var(--danger)','En retard':'var(--late)','Excusé':'var(--excused)'};
+// Appel : tout le monde est présent par défaut, seules les exceptions sont enregistrées.
+const statusInfo={
+ 'Présent':{k:'P',bg:'#1b4d3e',fg:'#fff'},
+ 'Absent':{k:'A',bg:'#b3261e',fg:'#fff'},
+ 'Retard':{k:'R',bg:'#f2c14e',fg:'#10261f'},
+ 'Oubli de tenue':{k:'T',bg:'#e8833a',fg:'#10261f'},
+ 'Oubli de chaussures':{k:'C',bg:'#7b4bc4',fg:'#fff'},
+ 'Certificat médical':{k:'CM',bg:'#2f5bea',fg:'#fff'},
+ 'Mot des parents':{k:'MP',bg:'#0f7b74',fg:'#fff'}
+};
+const statuses=Object.keys(statusInfo);
+const cancelReasons=['Jour férié','Sortie scolaire','Voyage scolaire','Grève','Absence de l’enseignant','Formation','Conseil de classe / réunion','Examens / brevet blanc','Installation indisponible','Météo'];
 
 // ---------- Données locales (IndexedDB) ----------
 const db=await new Promise((ok,no)=>{const r=indexedDB.open('eps-manager',2);r.onupgradeneeded=()=>{for(const k of stores)if(!r.result.objectStoreNames.contains(k))r.result.createObjectStore(k,{keyPath:'id'})};r.onsuccess=()=>ok(r.result);r.onerror=()=>no(r.error)});
 const data={};
 async function load(){await Promise.all(stores.map(k=>new Promise((ok,no)=>{const r=db.transaction(k).objectStore(k).getAll();r.onsuccess=()=>{data[k]=r.result;ok()};r.onerror=()=>no(r.error)})))}
 function transaction(names,fn){return new Promise((ok,no)=>{const t=db.transaction(names,'readwrite');t.oncomplete=ok;t.onabort=()=>no(t.error);try{fn(t)}catch(e){t.abort();no(e)}})}
+// Ancien format d'appel (chaque élève renseigné) → nouveau format (présent par défaut, exceptions seulement).
+async function migrateAttendance(){
+ const legacy=data.attendance.filter(a=>['Présent','Non renseigné','En retard','Excusé'].includes(a.status));
+ if(!legacy.length)return;
+ const called=new Set(data.attendance.filter(a=>a.status!=='Non renseigné').map(a=>a.sessionId));
+ await transaction(['attendance','sessions'],t=>{
+  for(const a of legacy){if(a.status==='Présent'||a.status==='Non renseigné')t.objectStore('attendance').delete(a.id);else t.objectStore('attendance').put({...a,status:a.status==='En retard'?'Retard':'Mot des parents'})}
+  for(const s of data.sessions)if(called.has(s.id)&&!s.called)t.objectStore('sessions').put({...s,called:'1'});
+ });
+ await load();
+}
 
 // ---------- Utilitaires ----------
 const view=document.querySelector('#view'),toast=document.querySelector('[role=status]'),search=document.querySelector('.search input');
@@ -72,6 +96,7 @@ const svgNS='http://www.w3.org/2000/svg';
 function el(tag,text,parent,cls){const n=document.createElement(tag);if(text!=null&&text!=='')n.textContent=text;if(cls)n.className=cls;parent?.append(n);return n}
 function icon(name,parent){const s=document.createElementNS(svgNS,'svg');s.setAttribute('viewBox','0 0 24 24');s.setAttribute('aria-hidden','true');const p=document.createElementNS(svgNS,'path');p.setAttribute('d',icons[name]);s.append(p);parent.append(s);return s}
 function iconButton(name,text,parent,cls){const b=el('button','',parent,'icon-btn'+(cls?' '+cls:''));b.type='button';icon(name,b);b.setAttribute('aria-label',text);b.title=text;return b}
+function button(text,parent,cls){const b=el('button',text,parent,cls);b.type='button';return b}
 function link(parent,href,text,cls){const a=el('a',text,parent,cls);a.href='#'+href;return a}
 const label=r=>r?.name||[r?.first,r?.last].filter(Boolean).join(' ');
 const find=(k,id)=>data[k]?.find(r=>r.id===id);
@@ -86,6 +111,7 @@ const addDays=(s,n)=>{const d=new Date(s+'T12:00');d.setDate(d.getDate()+n);retu
 const weekdayOf=s=>new Date(s+'T12:00').getDay();
 const mondayOf=s=>addDays(s,-((weekdayOf(s)+6)%7));
 const fmtDate=(d,opt={weekday:'short',day:'numeric',month:'short'})=>{if(!d)return '';const x=new Date(d+'T12:00');return isNaN(x)?d:new Intl.DateTimeFormat('fr',opt).format(x)};
+const longDate=d=>fmtDate(d,{weekday:'long',day:'numeric',month:'long'});
 const toMin=t=>{const [h,m]=(t||'').split(':').map(Number);return h*60+(m||0)};
 const fromMin=n=>String(Math.floor(n/60)).padStart(2,'0')+':'+String(n%60).padStart(2,'0');
 const hh=t=>t?t.replace(':','h'):'';
@@ -94,38 +120,54 @@ const timeRange=s=>s.time?hh(s.time)+(s.duration?' – '+hh(endOf(s)):''):'';
 const sortKey=r=>(r.date||r.start||'')+(r.time||'');
 const byDate=(a,b)=>sortKey(a).localeCompare(sortKey(b));
 const isStarted=s=>s.date<today()||(s.date===today()&&(!s.time||toMin(s.time)<=nowMin()));
+const isOver=s=>s.date<today()||(s.date===today()&&s.time&&toMin(endOf(s))<=nowMin());
 const isNow=s=>s.date===today()&&s.time&&toMin(s.time)<=nowMin()&&nowMin()<toMin(s.time)+Number(s.duration||0);
+const active=s=>!s.cancelled;
 function tint(id){let h=0;for(const c of id||'')h=(h*31+c.charCodeAt(0))>>>0;return h%5}
-function avatar(student,parent){
- if(student?.photo?.startsWith('data:image/jpeg;base64,')){const img=el('img','',parent,'avatar');img.src=student.photo;img.alt='';return img}
- return el('span',((student?.first||'?')[0]+((student?.last||'')[0]||'')).toUpperCase(),parent,'avatar t'+tint(student?.id));
+function avatar(student,parent,cls){
+ if(student?.photo?.startsWith('data:image/jpeg;base64,')){const img=el('img','',parent,'avatar'+(cls?' '+cls:''));img.src=student.photo;img.alt='';return img}
+ return el('span',((student?.first||'?')[0]+((student?.last||'')[0]||'')).toUpperCase(),parent,'avatar t'+tint(student?.id)+(cls?' '+cls:''));
 }
 let toastTimer;
 function notify(msg){toast.textContent=msg;toast.classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>toast.classList.remove('show'),3600)}
 function panel(parent,title,more){const p=el('section','',parent,'panel');const h=el('div','',p,'panel-head');el('h2',title,h);if(more)link(h,more[0],more[1],'link');return p}
+function sheet(title){const d=el('dialog','',document.body,'sheet');const head=el('div','',d,'panel-head');el('h2',title,head);iconButton('close','Fermer',head).onclick=()=>d.close();d.onclose=()=>d.remove();return d}
 function lastBackup(){try{return localStorage.getItem('eps-last-backup')}catch{return null}}
 function needYear(){el('p','Créez d’abord une année scolaire.',view,'empty');link(view,'years','Créer une année scolaire →','btn primary').style.alignSelf='start'}
+
+// ---------- Cycles et séances ----------
+const pupilsOf=classId=>data.students.filter(s=>s.classId===classId).sort((a,b)=>(a.last+a.first).localeCompare(b.last+b.first,'fr'));
+const cycleOf=s=>data.cycles.find(c=>c.classId===s.classId&&c.start&&c.start<=s.date&&c.end>=s.date);
+const sessionsBetween=(classId,start,end)=>data.sessions.filter(s=>s.classId===classId&&active(s)&&s.date>=start&&s.date<=end).sort(byDate);
+const cycleSessions=c=>c.start&&c.end?sessionsBetween(c.classId,c.start,c.end):[];
+function cycleRank(s){const c=cycleOf(s);if(!c||!active(s))return null;const list=cycleSessions(c);return {c,n:list.findIndex(x=>x.id===s.id)+1,total:list.length}}
+const cycleText=s=>{const r=cycleRank(s);return r?r.c.name+' · séance '+r.n+'/'+r.total:''};
+const sessionTitle=s=>ref('classes',s.classId)+' · '+(cycleOf(s)?.name||s.name);
+const sessionContent=s=>s.name&&s.name!=='EPS'&&s.name!==cycleOf(s)?.name?s.name:'';
+const currentCycle=classId=>{const t=today();const cs=data.cycles.filter(c=>c.classId===classId&&c.start&&c.end).sort((a,b)=>a.start.localeCompare(b.start));return cs.find(c=>c.start<=t&&c.end>=t)||cs.find(c=>c.start>t)||null};
+const recordsOf=id=>data.attendance.filter(a=>a.sessionId===id);
+const isCalled=s=>s.called==='1'||recordsOf(s.id).length>0;
+const protectedSession=s=>s&&(s.custom||s.cancelled||isCalled(s));
 
 // ---------- Calendrier scolaire : vacances, semaines A/B, emploi du temps ----------
 const holidayOf=s=>data.holidays.find(h=>h.start<=s&&h.end>=s);
 const yearOf=s=>data.years.find(y=>y.start<=s&&y.end>=s);
 function isSchoolWeek(monday,year){for(let i=0;i<6;i++){const d=addDays(monday,i);if(d>=year.start&&d<=year.end&&!holidayOf(d))return true}return false}
-// L'alternance A/B avance d'un cran à chaque semaine de cours : les semaines de vacances ne comptent pas.
+// L'alternance A/B avance d'un cran à chaque semaine de cours : les semaines entières de vacances ne comptent pas.
 function weekType(s,memo){
  const monday=mondayOf(s);if(memo?.has(monday))return memo.get(monday);
  const y=yearOf(s)||yearOf(addDays(monday,4));let type=null;
  if(y){const first=y.firstWeek==='B'?'B':'A';let n=0;for(let m=mondayOf(y.start);m<monday;m=addDays(m,7))if(isSchoolWeek(m,y))n++;type=n%2===0?first:(first==='A'?'B':'A')}
  memo?.set(monday,type);return type;
 }
-const hasCall=id=>data.attendance.some(a=>a.sessionId===id&&a.status!=='Non renseigné');
-// Crée, met à jour ou retire les séances futures issues de l'emploi du temps.
-// Ne touche jamais aux séances passées, modifiées à la main ou dont l'appel est commencé.
-async function syncSlots(){
- const t=today(),memo=new Map(),want=new Map();
+// Crée, met à jour ou retire les séances issues de l'emploi du temps à partir de `from` (aujourd'hui par défaut).
+// Ne touche jamais aux séances modifiées à la main, annulées ou dont l'appel est fait.
+async function syncSlots(from=today()){
+ const memo=new Map(),want=new Map();
  for(const slot of data.timetable){
   const y=find('years',slot.year);if(!y)continue;
   const skip=new Set((slot.skip||'').split(',').filter(Boolean));
-  let d=t>y.start?t:y.start;
+  let d=from>y.start?from:y.start;
   while(weekdayOf(d)!==Number(slot.weekday)&&d<=y.end)d=addDays(d,1);
   for(;d<=y.end;d=addDays(d,7)){
    if(skip.has(d)||holidayOf(d))continue;
@@ -133,29 +175,31 @@ async function syncSlots(){
    want.set(slot.id+'@'+d,{id:slot.id+'@'+d,slot:slot.id,classId:slot.classId,date:d,time:slot.time,duration:slot.duration,name:slot.name||'EPS'});
   }
  }
- const removed=data.sessions.filter(s=>s.slot&&s.date>=t&&!want.has(s.id)&&!s.custom&&!hasCall(s.id)).map(s=>s.id);
- const put=[...want.values()].filter(row=>{const old=find('sessions',row.id);return !old?.custom&&!hasCall(row.id)&&JSON.stringify(old)!==JSON.stringify(row)});
+ const removed=data.sessions.filter(s=>s.slot&&s.date>=from&&!want.has(s.id)&&!protectedSession(s)).map(s=>s.id);
+ const put=[...want.values()].filter(row=>{const old=find('sessions',row.id);return !protectedSession(old)&&JSON.stringify(old)!==JSON.stringify(row)});
  const added=put.filter(r=>!find('sessions',r.id)).length;
  if(removed.length||put.length){
-  const gone=new Set(removed);
-  await transaction(['sessions','attendance'],tx=>{removed.forEach(id=>tx.objectStore('sessions').delete(id));data.attendance.filter(a=>gone.has(a.sessionId)).forEach(a=>tx.objectStore('attendance').delete(a.id));put.forEach(r=>tx.objectStore('sessions').put(r))});
+  await transaction('sessions',tx=>{removed.forEach(id=>tx.objectStore('sessions').delete(id));put.forEach(r=>tx.objectStore('sessions').put(r))});
   await load();
  }
- return {added,removed:removed.length,total:data.sessions.filter(s=>s.slot&&s.date>=t).length};
+ return {added,removed:removed.length};
 }
 
 // ---------- Indicateurs ----------
 const activeRestrictions=()=>data.restrictions.filter(r=>r.start<=today()&&r.end>=today());
-const restrictedIds=()=>new Set(activeRestrictions().map(r=>r.student));
-const pupilsOf=classId=>data.students.filter(s=>s.classId===classId).sort((a,b)=>(a.last+a.first).localeCompare(b.last+b.first,'fr'));
-function missingAttendance(session){const filled=new Set(data.attendance.filter(a=>a.sessionId===session.id&&a.status!=='Non renseigné').map(a=>a.student));return pupilsOf(session.classId).filter(p=>!filled.has(p.id)).length}
-const pendingCalls=()=>data.sessions.filter(s=>isStarted(s)&&missingAttendance(s)>0).sort((a,b)=>byDate(b,a));
-function repeatedAbsences(){
+const restrictionOf=id=>activeRestrictions().find(r=>r.student===id);
+const pendingCalls=()=>data.sessions.filter(s=>active(s)&&isStarted(s)&&!isCalled(s)&&pupilsOf(s.classId).length).sort((a,b)=>byDate(b,a));
+function watchList(){
  const out=[];
  for(const c of data.classes){
-  const last=data.sessions.filter(s=>s.classId===c.id&&isStarted(s)).sort((a,b)=>byDate(b,a)).slice(0,4);
-  if(last.length<3)continue;
-  for(const p of pupilsOf(c.id)){const n=last.filter(s=>data.attendance.find(a=>a.id===s.id+'/'+p.id)?.status==='Absent').length;if(n>=3)out.push({p,n,of:last.length})}
+  const last=data.sessions.filter(s=>s.classId===c.id&&active(s)&&isStarted(s)&&isCalled(s)).sort((a,b)=>byDate(b,a));
+  for(const p of pupilsOf(c.id)){
+   const st=s=>data.attendance.find(a=>a.id===s.id+'/'+p.id)?.status;
+   const abs=last.slice(0,4).filter(s=>st(s)==='Absent').length;
+   if(abs>=3)out.push({p,text:abs+' absences sur les 4 dernières séances'});
+   const kit=last.slice(0,8).filter(s=>['Oubli de tenue','Oubli de chaussures'].includes(st(s))).length;
+   if(kit>=3)out.push({p,text:kit+' oublis de tenue ou de chaussures sur les 8 dernières séances'});
+  }
  }
  return out;
 }
@@ -172,6 +216,7 @@ function buildNav(){
  }
 }
 document.querySelector('time').textContent=new Intl.DateTimeFormat('fr',{dateStyle:'full'}).format(new Date());
+document.querySelector('.version').textContent='Version '+APP_VERSION;
 
 // ---------- Rendu ----------
 let sessionId='',classFilter='',period='upcoming',calWeek='',editing={};
@@ -188,61 +233,84 @@ function render(){
  ({home:renderHome,calendar:renderCalendar,planning:renderPlanning,attendance:renderAttendance,backup:renderBackup}[k]||renderList)(k);
 }
 
-function sessionRow(parent,s){
- const r=link(parent,'attendance','','row'+(s.date===today()?' highlight':''));r.onclick=()=>{sessionId=s.id};
- const tm=el('span','',r,'time');el('span',s.date===today()?'Auj.':fmtDate(s.date),tm);if(s.time)el('small',hh(s.time),tm);
- const b=el('div','',r,'body');el('span',ref('classes',s.classId)+' · '+s.name,b,'title');
- el('span',[timeRange(s),plural(pupilsOf(s.classId).length,'élève')].filter(Boolean).join(' · '),b,'meta');
- if(isNow(s))el('span','En cours',r,'tag now');else if(s.date===today())el('span',missingAttendance(s)?'Faire l’appel':'Appel fait',r,'tag');
+// ---------- Tableau de bord ----------
+function todayCard(parent,s){
+ const pupils=pupilsOf(s.classId).length;
+ const card=s.cancelled?el('div','',parent,'today-card cancelled'):link(parent,'attendance','','today-card'+(isNow(s)?' now':''));
+ if(!s.cancelled)card.onclick=()=>{sessionId=s.id};
+ const tm=el('div','',card,'tc-time');el('b',s.time?hh(s.time):'—',tm);if(s.time)el('span',hh(endOf(s)),tm);
+ const body=el('div','',card,'body');
+ el('span',sessionTitle(s),body,'title');
+ el('span',[cycleText(s),sessionContent(s),plural(pupils,'élève')].filter(Boolean).join(' · '),body,'meta');
+ if(s.cancelled)el('span','Annulée · '+s.cancelled,card,'tag warn');
+ else if(isNow(s))el('span',isCalled(s)?'En cours · appel fait':'En cours · faire l’appel',card,'tag now');
+ else if(isOver(s))el('span',isCalled(s)?'Appel fait':'Appel à faire',card,'tag'+(isCalled(s)?'':' warn'));
+ else el('span','À venir',card,'tag');
 }
-
+function sessionRow(parent,s){
+ const r=link(parent,'attendance','','row');r.onclick=()=>{sessionId=s.id};
+ const tm=el('span','',r,'time');el('span',fmtDate(s.date),tm);if(s.time)el('small',hh(s.time),tm);
+ const b=el('div','',r,'body');el('span',sessionTitle(s),b,'title');
+ el('span',[timeRange(s),cycleText(s)].filter(Boolean).join(' · '),b,'meta');
+ if(s.cancelled)el('span','Annulée',r,'tag warn');
+}
 function renderHome(){
  if(!data.years.length){
   const p=panel(view,'Bienvenue');
-  el('p','Commencez par créer une année scolaire, puis vos classes et vos élèves. Renseignez ensuite votre emploi du temps et les vacances : toutes les séances de l’année seront créées automatiquement. Tout reste enregistré sur cette tablette.',p,'muted');
-  link(p,'years','Créer la première année scolaire →','btn primary').style.alignSelf='start';
+  el('p','Commencez par créer une année scolaire, vos classes et vos élèves, puis votre emploi du temps et les vacances : toutes les séances de l’année seront créées automatiquement. Tout reste enregistré sur cette tablette.',p,'muted');
+  const a=el('div','',p,'actions');
+  link(a,'years','Créer ma première année scolaire','btn primary');
+  button('Essayer avec des données d’exemple',a).onclick=loadSample;
   return;
  }
  const t=today(),monday=mondayOf(t),saturday=addDays(monday,5);
- const week=data.sessions.filter(s=>s.date>=monday&&s.date<=saturday);
+ const week=data.sessions.filter(s=>active(s)&&s.date>=monday&&s.date<=saturday);
  const calls=pendingCalls(),backup=lastBackup();
  const days=backup?Math.floor((Date.now()-new Date(backup))/864e5):null;
  const wt=weekType(t),hol=holidayOf(t);
 
+ // Séances du jour, issues du calendrier
+ const todays=data.sessions.filter(s=>s.date===t).sort(byDate);
+ const p0=panel(view,hol?'Aujourd’hui · '+hol.name:'Aujourd’hui'+(wt?' · semaine '+wt:''),['calendar','Calendrier →']);
+ p0.classList.add('today-panel');
+ if(todays.length){const g=el('div','',p0,'today-grid');for(const s of todays)todayCard(g,s)}
+ else el('p',hol?'Bonnes vacances !':'Aucune séance aujourd’hui.',p0,'empty');
+
  const kpis=el('div','',view,'kpis');
  const kpi=(href,title,value,sub,alert)=>{const a=link(kpis,href,'','kpi'+(alert?' alert':''));el('span',title,a);el('b',value,a);el('small',sub,a)};
- kpi('calendar',hol?hol.name:'Séances cette semaine',hol?'Vacances':week.length,hol?'Jusqu’au '+fmtDate(hol.end):(wt?'Semaine '+wt+' · ':'')+week.filter(s=>s.date===t).length+' aujourd’hui');
- kpi('attendance','Appels à compléter',calls.length,calls[0]?ref('classes',calls[0].classId)+' · '+fmtDate(calls[0].date):'Tout est à jour',calls.length>0);
+ kpi('calendar','Séances cette semaine',week.length,week.filter(s=>s.date>t).length+' à venir');
+ kpi('attendance','Appels à faire',calls.length,calls[0]?ref('classes',calls[0].classId)+' · '+fmtDate(calls[0].date):'Tout est à jour',calls.length>0);
  kpi('students','Élèves suivis',data.students.length,plural(data.classes.length,'classe'));
  kpi('backup','Dernière sauvegarde',days==null?'Jamais':days===0?'Aujourd’hui':'Il y a '+days+' j',days==null||days>7?'Pensez à exporter':'Données protégées',days==null||days>7);
 
  const grid=el('div','',view,'grid');
- const p1=panel(grid,'Prochaines séances',['calendar','Calendrier →']);
- const upcoming=data.sessions.filter(s=>s.date>t||(s.date===t&&(!s.time||toMin(endOf(s))>nowMin()))).sort(byDate).slice(0,5);
+ const p1=panel(grid,'Prochaines séances');
+ const upcoming=data.sessions.filter(s=>active(s)&&s.date>t).sort(byDate).slice(0,5);
  for(const s of upcoming)sessionRow(p1,s);
- if(!upcoming.length){el('p','Aucune séance programmée.',p1,'empty');link(p1,data.timetable.length?'sessions':'planning',data.timetable.length?'Ajouter une séance →':'Renseigner mon emploi du temps →','link')}
+ if(!upcoming.length){el('p','Aucune séance programmée.',p1,'empty');link(p1,'planning','Renseigner mon emploi du temps →','link')}
 
  const p2=panel(grid,'À surveiller');
  let n=0;
  for(const r of activeRestrictions()){const s=find('students',r.student);if(!s)continue;n++;alertRow(p2,s,'Inaptitude jusqu’au '+fmtDate(r.end)+' · '+r.name,'restrictions')}
- for(const {p,n:a,of} of repeatedAbsences()){n++;alertRow(p2,p,a+' absences sur les '+of+' dernières séances','attendance')}
- for(const s of calls.filter(s=>s.date<t).slice(0,3)){n++;const r=el('div','',p2,'row');el('span','!',r,'avatar t2');const b=el('div','',r,'body');el('span','Appel incomplet · '+ref('classes',s.classId),b,'title');el('span',fmtDate(s.date)+(s.time?' '+hh(s.time):'')+' · '+plural(missingAttendance(s),'élève')+' sans statut',b,'meta');const a=link(r,'attendance','Compléter','btn small');a.onclick=()=>{sessionId=s.id}}
+ for(const {p,text} of watchList()){n++;alertRow(p2,p,text,'students')}
+ for(const s of calls.filter(s=>s.date<t).slice(0,3)){n++;const r=el('div','',p2,'row');el('span','!',r,'avatar t2');const b=el('div','',r,'body');el('span','Appel à faire · '+ref('classes',s.classId),b,'title');el('span',fmtDate(s.date)+(s.time?' '+hh(s.time):''),b,'meta');link(r,'attendance','Ouvrir','btn small').onclick=()=>{sessionId=s.id}}
  if(!n)el('p','Rien à signaler pour le moment.',p2,'empty');
 
  if(data.classes.length){
   el('h2','Mes classes',view,'section-title');
   const cards=el('div','',view,'list');
   for(const c of data.classes){
-   const a=link(cards,'students','','class-card');a.onclick=()=>{classFilter=c.id};
+   const a=link(cards,'cycles','','class-card');a.onclick=()=>{classFilter=c.id};
    const top=el('div','',a,'top');el('strong',c.name,top);el('span',plural(pupilsOf(c.id).length,'élève'),top,'muted');
-   const cycle=data.cycles.filter(x=>x.classId===c.id).at(-1);el('span',cycle?cycle.name:'Aucun cycle en cours',a).style.fontWeight='600';
-   const all=data.sessions.filter(s=>s.classId===c.id),done=all.filter(isStarted).length;
-   const bar=el('div','',a,'progress');el('i','',bar).style.width=(all.length?Math.round(done/all.length*100):0)+'%';
-   el('span',all.length?'Séance '+done+' sur '+all.length:'Aucune séance planifiée',a,'muted');
+   const cy=currentCycle(c.id);
+   el('span',cy?cy.name+(cy.start>t?' · commence le '+fmtDate(cy.start):''):'Aucun cycle en cours',a).style.fontWeight='600';
+   const list=cy?cycleSessions(cy):[],done=list.filter(isStarted).length;
+   const bar=el('div','',a,'progress');el('i','',bar).style.width=(list.length?Math.round(done/list.length*100):0)+'%';
+   el('span',cy?(list.length?'Séance '+done+' sur '+list.length:'Aucune séance dans ce cycle'):'Créez un cycle avec ses dates',a,'muted');
   }
  }
 }
-function alertRow(parent,student,text,href){const r=el('div','',parent,'row');avatar(student,r);const b=el('div','',r,'body');el('span',label(student)+' · '+ref('classes',student.classId),b,'title');el('span',text,b,'meta');link(r,href,'Voir','btn small')}
+function alertRow(parent,student,text,href){const r=el('div','',parent,'row');avatar(student,r);const b=el('div','',r,'body');el('span',label(student)+' · '+ref('classes',student.classId),b,'title');el('span',text,b,'meta');link(r,href,'Voir','btn small').onclick=()=>{classFilter=student.classId}}
 
 // ---------- Calendrier (vue semaine) ----------
 function renderCalendar(){
@@ -256,7 +324,7 @@ function renderCalendar(){
  const bar=el('div','',view,'cal-bar');
  const navb=el('div','',bar,'cal-nav');
  iconButton('prev','Semaine précédente',navb).onclick=()=>{calWeek=addDays(calWeek,-7);render()};
- el('button','Aujourd’hui',navb,'small').onclick=()=>{calWeek=mondayOf(today());render()};
+ button('Aujourd’hui',navb,'small').onclick=()=>{calWeek=mondayOf(today());render()};
  iconButton('next','Semaine suivante',navb).onclick=()=>{calWeek=addDays(calWeek,7);render()};
  const ttl=el('div','',bar,'cal-title');
  el('strong','Semaine du '+fmtDate(days[0],{day:'numeric',month:'long'})+' au '+fmtDate(days.at(-1),{day:'numeric',month:'long',year:'numeric'}),ttl);
@@ -277,7 +345,7 @@ function renderCalendar(){
  for(const d of days){
   const h=el('div','',cal,'cal-head'+(d===today()?' today':''));
   el('span',fmtDate(d,{weekday:'short'}),h,'dname');el('b',fmtDate(d,{day:'numeric'}),h);
-  for(const s of sessions.filter(s=>s.date===d&&!s.time))el('button',ref('classes',s.classId)+' · '+s.name,h,'chip c'+tint(s.classId)).onclick=()=>openSession(s);
+  for(const s of sessions.filter(s=>s.date===d&&!s.time))button(sessionTitle(s),h,'chip c'+tint(s.classId)+(s.cancelled?' cancelled':'')).onclick=()=>openSession(s);
  }
  const hours=el('div','',cal,'cal-hours');hours.style.height=height+'px';
  for(let hr=startH;hr<=endH;hr++)el('span',hr+'h',hours).style.top=(hr-startH)*60*PX+'px';
@@ -288,94 +356,124 @@ function renderCalendar(){
   const lanes=[];
   const placed=list.map(s=>{const st=toMin(s.time),en=st+Number(s.duration||55);let lane=lanes.findIndex(e=>e<=st);if(lane<0){lane=lanes.length;lanes.push(en)}else lanes[lane]=en;return {s,st,en,lane}});
   for(const {s,st,en,lane} of placed){
-   const ev=el('button','',col,'event c'+tint(s.classId)+(isStarted(s)&&!missingAttendance(s)?' done':''));
+   const ev=button('',col,'event c'+tint(s.classId)+(s.cancelled?' cancelled':isStarted(s)&&isCalled(s)?' done':''));
    ev.style.top=(st-startH*60)*PX+'px';ev.style.height=Math.max(30,(en-st)*PX-3)+'px';
    ev.style.left='calc('+(lane/lanes.length*100)+'% + 3px)';ev.style.width='calc('+(100/lanes.length)+'% - 6px)';
-   el('span',timeRange(s),ev,'ev-time');el('strong',ref('classes',s.classId),ev);el('span',s.name,ev,'ev-name');
-   ev.setAttribute('aria-label',ref('classes',s.classId)+', '+s.name+', '+fmtDate(s.date,{weekday:'long',day:'numeric',month:'long'})+' '+timeRange(s));
+   el('span',timeRange(s),ev,'ev-time');el('strong',ref('classes',s.classId),ev);
+   el('span',s.cancelled?'Annulée · '+s.cancelled:cycleText(s)||s.name,ev,'ev-name');
+   ev.setAttribute('aria-label',sessionTitle(s)+', '+longDate(s.date)+' '+timeRange(s)+(s.cancelled?', annulée : '+s.cancelled:''));
    ev.onclick=()=>openSession(s);
   }
   if(d===today()&&nowMin()>=startH*60&&nowMin()<=endH*60)el('span','',col,'now-line').style.top=(nowMin()-startH*60)*PX+'px';
  });
 }
 
+// Fenêtre d'une séance : appel, modification, suppression avec motif.
 function openSession(s){
- const d=el('dialog','',document.body,'sheet');
- const head=el('div','',d,'panel-head');el('h2',ref('classes',s.classId)+' · '+s.name,head);
- iconButton('close','Fermer',head).onclick=()=>d.close();
- el('p',fmtDate(s.date,{weekday:'long',day:'numeric',month:'long'})+(s.time?' · '+timeRange(s):''),d,'muted');
+ const d=sheet(sessionTitle(s));
+ el('p',longDate(s.date)+(s.time?' · '+timeRange(s):''),d,'muted');
+ const extra=[cycleText(s),sessionContent(s)].filter(Boolean).join(' · ');if(extra)el('p',extra,d);
  const slot=s.slot&&find('timetable',s.slot);
  el('p',slot?'Cours régulier · '+enumLabel('freq',slot.freq).toLowerCase()+(s.custom?' · modifié pour cette date':''):'Séance ponctuelle',d,'muted');
- const n=missingAttendance(s),total=pupilsOf(s.classId).length;
- if(total)el('p',n?plural(total-n,'élève renseigné','élèves renseignés')+' sur '+total:'Appel complet',d);
  const acts=el('div','',d,'actions');
- link(acts,'attendance','Faire l’appel','btn primary').onclick=()=>{sessionId=s.id;d.close()};
- const e=el('button','Modifier',acts);e.type='button';e.onclick=()=>{d.close();editing={k:'sessions',id:s.id};if(location.hash==='#sessions')render();else location.hash='#sessions'};
- const r=el('button','Supprimer',acts,'danger');r.type='button';r.onclick=async()=>{if(await remove('sessions',s.id))d.close()};
- d.onclose=()=>d.remove();d.showModal();
+ if(s.cancelled){
+  el('p','Séance supprimée · '+s.cancelled,d,'notice');
+  button('Rétablir la séance',acts,'primary').onclick=async()=>{const {cancelled,...rest}=s;await transaction('sessions',t=>t.objectStore('sessions').put(rest));await load();d.close();render();notify('Séance rétablie.')};
+  button('Effacer définitivement',acts,'danger').onclick=async()=>{if(await remove('sessions',s.id))d.close()};
+ }else{
+  if(isCalled(s)){const n=recordsOf(s.id).length;el('p',n?'Appel fait · '+plural(n,'mention'):'Appel fait · tous présents',d)}
+  link(acts,'attendance','Faire l’appel','btn primary').onclick=()=>{sessionId=s.id;d.close()};
+  button('Modifier',acts).onclick=()=>{d.close();editing={k:'sessions',id:s.id};if(location.hash==='#sessions')render();else location.hash='#sessions'};
+  button('Supprimer…',acts,'danger').onclick=()=>{d.close();cancelSession(s)};
+ }
+ d.showModal();
+}
+function cancelSession(s){
+ const d=sheet('Supprimer la séance');
+ el('p',sessionTitle(s)+' · '+longDate(s.date)+(s.time?' · '+timeRange(s):''),d,'muted');
+ el('p','Pour quelle raison ? La séance restera visible, barrée, dans le calendrier et ne comptera plus dans le cycle.',d);
+ let reason='';
+ const grid=el('div','',d,'choice-grid'),other=el('input','',el('label','Autre motif',d));other.placeholder='Précisez…';
+ const ok=button('Supprimer la séance',el('div','',d,'actions'),'primary');ok.disabled=true;
+ for(const r of cancelReasons){const b=button(r,grid,'choice');b.onclick=()=>{reason=r;other.value='';for(const x of grid.children)x.setAttribute('aria-pressed',x===b);ok.disabled=false}}
+ other.oninput=()=>{reason=other.value.trim();for(const x of grid.children)x.setAttribute('aria-pressed','false');ok.disabled=!reason};
+ ok.onclick=async()=>{await transaction('sessions',t=>t.objectStore('sessions').put({...s,cancelled:reason}));await load();d.close();render();notify('Séance supprimée · '+reason+'.')};
+ const err=button('Effacer complètement (erreur de saisie)',d,'text-btn');err.onclick=async()=>{if(await remove('sessions',s.id))d.close()};
+ d.showModal();
 }
 
 // ---------- Paramètres du calendrier ----------
 function renderPlanning(){
  if(!data.years.length)return needYear();
- el('p','Saisissez vos cours une seule fois : les séances sont créées automatiquement jusqu’à la fin de l’année, à partir d’aujourd’hui, en sautant les vacances. Les séances passées, modifiées à la main ou dont l’appel est commencé ne sont jamais changées.',view,'muted');
+ el('p','Saisissez vos cours une seule fois : les séances sont créées automatiquement jusqu’à la fin de l’année, à partir d’aujourd’hui, en sautant les vacances. Les séances passées, modifiées, supprimées avec un motif ou dont l’appel est fait ne sont jamais changées.',view,'muted');
  const p=panel(view,'Semaines A / B');
- el('p','Choisissez le type de la première semaine de cours. L’alternance saute ensuite les semaines de vacances.',p,'muted');
+ el('p','Choisissez le type de la première semaine de cours. Les semaines entières de vacances ne comptent pas dans l’alternance ; un jour férié isolé ne la décale pas.',p,'muted');
  const f=el('div','',p,'filters');
  for(const y of data.years){
   const s=select(el('label','Première semaine · '+y.name,f),[['A','Semaine A'],['B','Semaine B']]);s.value=y.firstWeek==='B'?'B':'A';
-  s.onchange=async()=>{await transaction('years',t=>t.objectStore('years').put({...y,firstWeek:s.value}));await load();const r=await syncSlots();render();notify('Alternance mise à jour · '+plural(r.total,'séance future planifiée','séances futures planifiées')+'.')};
+  s.onchange=async()=>{await transaction('years',t=>t.objectStore('years').put({...y,firstWeek:s.value}));await load();await syncSlots();render();notify('Alternance mise à jour.')};
  }
  const wt=weekType(today());if(wt)el('p','Cette semaine est une semaine '+wt+'.',p).style.fontWeight='600';
  el('h2','Emploi du temps',view,'section-title big');
  renderCollection('timetable',view);
- el('h2','Vacances',view,'section-title big');
+ el('h2','Vacances et jours fériés',view,'section-title big');
  renderCollection('holidays',view);
 }
 
 // ---------- Appel ----------
 function defaultSession(){
- const t=today(),n=nowMin(),todays=data.sessions.filter(s=>s.date===t).sort(byDate);
- return todays.find(isNow)||todays.find(s=>s.time&&toMin(s.time)>n)||todays.at(-1)||data.sessions.filter(isStarted).sort((a,b)=>byDate(b,a))[0]||data.sessions.slice().sort(byDate)[0];
+ const t=today(),n=nowMin(),todays=data.sessions.filter(s=>s.date===t&&active(s)).sort(byDate);
+ return todays.find(isNow)||todays.find(s=>s.time&&toMin(s.time)>n)||todays.at(-1)||data.sessions.filter(s=>active(s)&&isStarted(s)).sort((a,b)=>byDate(b,a))[0]||data.sessions.slice().sort(byDate)[0];
 }
 function renderAttendance(){
  if(!data.sessions.length){el('p','Aucune séance pour le moment.',view,'empty');link(view,'planning','Renseigner mon emploi du temps →','btn primary').style.alignSelf='start';return}
  if(!find('sessions',sessionId))sessionId=defaultSession().id;
  const limit=addDays(today(),7);
- const options=data.sessions.filter(s=>s.date<=limit||s.id===sessionId).sort((a,b)=>byDate(b,a)).slice(0,150);
- const session=find('sessions',sessionId),pupils=pupilsOf(session.classId),restricted=restrictedIds();
+ const options=data.sessions.filter(s=>(active(s)&&s.date<=limit)||s.id===sessionId).sort((a,b)=>byDate(b,a)).slice(0,150);
+ const session=find('sessions',sessionId),pupils=pupilsOf(session.classId);
  const head=el('div','',view,'panel attendance-head');
- const s=select(el('label','Séance',head),options.map(r=>[r.id,fmtDate(r.date)+(r.time?' '+hh(r.time):'')+' · '+ref('classes',r.classId)+' · '+r.name]));
+ const s=select(el('label','Séance',head),options.map(r=>[r.id,fmtDate(r.date)+(r.time?' '+hh(r.time):'')+' · '+sessionTitle(r)]));
  s.value=sessionId;s.onchange=()=>{sessionId=s.value;render()};
+ const info=[longDate(session.date),timeRange(session),cycleText(session),sessionContent(session)].filter(Boolean).join(' · ');
+ el('p',info,head,'muted');
+ if(session.cancelled){el('p','Cette séance a été supprimée · '+session.cancelled,view,'notice');button('Gérer la séance',view).onclick=()=>openSession(session);return}
  if(!pupils.length){el('p','Aucun élève dans cette classe.',view,'empty');link(view,'students','Ajouter des élèves →','link');return}
- const info=el('div','',head,'panel-head');const counter=el('strong','',info);el('span','Touchez un élève pour changer son statut',info,'muted');
- const bar=el('div','',head,'progress');const fill=el('i','',bar);
+ const statusOf=p=>data.attendance.find(a=>a.id===sessionId+'/'+p.id)?.status||'Présent';
+ const counts={};for(const p of pupils){const st=statusOf(p);counts[st]=(counts[st]||0)+1}
  const legend=el('div','',head,'legend');
- const statusOf=p=>data.attendance.find(a=>a.id===sessionId+'/'+p.id)?.status||'Non renseigné';
- function refresh(){
-  const all=pupils.map(statusOf),done=all.filter(x=>x!=='Non renseigné').length;
-  counter.textContent=done+' / '+pupils.length+' renseignés';fill.style.width=Math.round(done/pupils.length*100)+'%';
-  legend.replaceChildren();for(const st of statuses.slice(1)){const sp=el('span','',legend);const d=el('span',statusKey[st],sp,'dot');d.style.background=statusColor[st];if(st==='En retard')d.style.color='var(--ink)';sp.append(st+' · '+all.filter(x=>x===st).length)}
- }
+ for(const st of statuses)if(counts[st]){const sp=el('span','',legend);const dt=el('span',statusInfo[st].k,sp,'dot');dt.style.background=statusInfo[st].bg;dt.style.color=statusInfo[st].fg;sp.append(st+' · '+counts[st])}
+ el('p','Tous les élèves sont présents par défaut. Touchez un élève pour indiquer une absence, un retard, un oubli ou une dispense.',head,'muted');
+
  const grid=el('div','',view,'pupils');
  for(const p of pupils){
-  const b=el('button','',grid,'pupil');
-  avatar(p,b);el('span',p.first,b);el('span',p.last,b,'last');const stEl=el('span','',b,'st');
-  const paint=()=>{const st=statusOf(p);b.dataset.s=st;stEl.textContent=statusKey[st];b.setAttribute('aria-label',label(p)+' : '+st)};
-  if(restricted.has(p.id))el('span','!',b,'inapt').title='Inaptitude en cours';
-  paint();
+  const st=statusOf(p),info=statusInfo[st];
+  const b=button('',grid,'pupil'+(st==='Présent'?'':' flagged'));
+  b.style.setProperty('--c',info.bg);b.style.setProperty('--fg',info.fg);
+  avatar(p,b);el('span',p.first,b);el('span',p.last,b,'last');
+  el('span',info.k,b,'st');
+  if(st!=='Présent')el('span',st,b,'st-label');
+  if(restrictionOf(p.id))el('span','!',b,'inapt').title='Inaptitude en cours';
+  b.setAttribute('aria-label',label(p)+' : '+st);
+  b.onclick=()=>pupilSheet(p,session,st);
+ }
+ const actions=el('div','',view,'actions');
+ if(isCalled(session))el('p','✓ Appel enregistré'+(recordsOf(session.id).length?'':' · tous présents'),actions,'saved');
+ else button('Valider l’appel · '+plural(counts['Présent']||0,'présent'),actions,'primary').onclick=async()=>{await transaction('sessions',t=>t.objectStore('sessions').put({...session,called:'1'}));await load();render();notify('Appel enregistré.')};
+}
+function pupilSheet(p,session,current){
+ const d=sheet(label(p));
+ const r=restrictionOf(p.id);if(r)el('p','Inaptitude jusqu’au '+fmtDate(r.end)+' · '+r.name,d,'notice');
+ const grid=el('div','',d,'status-grid');
+ for(const st of statuses){
+  const b=button('',grid,'status-btn');b.setAttribute('aria-pressed',st===current);
+  const dot=el('span',statusInfo[st].k,b,'dot');dot.style.background=statusInfo[st].bg;dot.style.color=statusInfo[st].fg;b.append(st);
   b.onclick=async()=>{
-   const id=sessionId+'/'+p.id,row={id,sessionId,student:p.id,status:statuses[(statuses.indexOf(statusOf(p))+1)%statuses.length]};
-   try{await transaction('attendance',t=>t.objectStore('attendance').put(row));const i=data.attendance.findIndex(a=>a.id===id);if(i<0)data.attendance.push(row);else data.attendance[i]=row;paint();refresh();buildNav()}catch{notify('Enregistrement impossible.')}
+   const id=session.id+'/'+p.id;
+   await transaction(['attendance','sessions'],t=>{if(st==='Présent')t.objectStore('attendance').delete(id);else t.objectStore('attendance').put({id,sessionId:session.id,student:p.id,status:st});t.objectStore('sessions').put({...session,called:'1'})});
+   await load();d.close();render();
   };
  }
- refresh();
- const actions=el('div','',view,'actions');
- el('button','Tous les autres présents',actions,'primary').onclick=async()=>{
-  const rows=pupils.filter(p=>statusOf(p)==='Non renseigné').map(p=>({id:sessionId+'/'+p.id,sessionId,student:p.id,status:'Présent'}));
-  if(!rows.length)return notify('Tous les élèves ont déjà un statut.');
-  await transaction('attendance',t=>rows.forEach(r=>t.objectStore('attendance').put(r)));await load();render();notify(plural(rows.length,'élève marqué présent','élèves marqués présents')+'.');
- };
+ d.showModal();
 }
 
 // ---------- Sauvegardes ----------
@@ -383,7 +481,7 @@ function renderBackup(){
  const p=panel(view,'Exporter');
  el('p','La sauvegarde JSON contient les données en clair (noms, notes, inaptitudes). Conservez-la dans un emplacement protégé.',p,'notice');
  const b=lastBackup();el('p',b?'Dernière sauvegarde : '+new Intl.DateTimeFormat('fr',{dateStyle:'long',timeStyle:'short'}).format(new Date(b)):'Aucune sauvegarde exportée depuis cet appareil.',p,'muted');
- const btn=el('button','Exporter la sauvegarde',p,'primary');btn.style.alignSelf='start';
+ const btn=button('Exporter la sauvegarde',p,'primary');btn.style.alignSelf='start';
  btn.onclick=()=>{const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify({version:2,data})],{type:'application/json'}));a.download='eps-manager-'+today()+'.json';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);try{localStorage.setItem('eps-last-backup',new Date().toISOString())}catch{}render();notify('Sauvegarde exportée.')};
  const r=panel(view,'Restaurer');
  el('p','La restauration remplace toutes les données de cet appareil.',r,'muted');
@@ -394,14 +492,75 @@ function renderBackup(){
   for(const key of ['holidays','timetable'])b.data[key]??=[];
   if(!stores.every(key=>Array.isArray(b.data[key])&&b.data[key].every(r=>r&&typeof r.id==='string'&&Object.values(r).every(v=>typeof v==='string'))))throw Error();
   if(!confirm('Remplacer toutes les données locales par cette sauvegarde ?'))return;
-  await transaction(stores,t=>{for(const key of stores){const st=t.objectStore(key);st.clear();b.data[key].forEach(r=>st.add(r))}});await load();render();notify('Sauvegarde restaurée.');
+  await transaction(stores,t=>{for(const key of stores){const st=t.objectStore(key);st.clear();b.data[key].forEach(r=>st.add(r))}});await load();await migrateAttendance();render();notify('Sauvegarde restaurée.');
  }catch{notify('Restauration impossible. Vérifiez le fichier.')}};
+ const s=panel(view,'Données d’exemple');
+ el('p','Deux classes (5e B et 4e A) avec élèves, emploi du temps, vacances, cycles, appels passés, notes et observations, pour découvrir l’application. Remplace les données actuelles.',s,'muted');
+ const sb=button('Charger les données d’exemple',s);sb.style.alignSelf='start';sb.onclick=loadSample;
+}
+
+// ---------- Données d'exemple ----------
+async function loadSample(){
+ const hasData=stores.some(k=>data[k].length);
+ if(hasData&&!confirm('Remplacer toutes les données de cet appareil par les données d’exemple ?\n\nPensez à exporter une sauvegarde avant si besoin.'))return;
+ let seed=42;const rnd=()=>{seed=(seed*1664525+1013904223)%4294967296;return seed/4294967296};
+ const y={id:'ex-year',name:'2026-2027',start:'2026-09-01',end:'2027-07-03',firstWeek:'A'};
+ const holidays=[['Toussaint','2026-10-17','2026-11-01'],['11 Novembre','2026-11-11','2026-11-11'],['Noël','2026-12-19','2027-01-03'],['Hiver','2027-02-13','2027-02-28'],['Lundi de Pâques','2027-03-29','2027-03-29'],['Printemps','2027-04-10','2027-04-25'],['Pont de l’Ascension','2027-05-06','2027-05-09'],['Lundi de Pentecôte','2027-05-17','2027-05-17']].map(([name,start,end],i)=>({id:'ex-hol'+i,year:y.id,name,start,end}));
+ const classes=[{id:'ex-5B',year:y.id,name:'5e B'},{id:'ex-4A',year:y.id,name:'4e A'}];
+ const firsts=['Léa','Hugo','Inès','Nathan','Chloé','Adam','Jade','Louis','Emma','Rayan','Lina','Gabriel','Mila','Noé','Zoé','Arthur','Manon','Sacha','Louise','Ethan','Alice','Yanis','Rose','Timéo','Camille','Mohamed','Anna','Jules','Sarah','Lucas','Lou','Malo','Nina','Tom','Ambre','Enzo','Clara','Nolan','Eva','Mathis','Agathe','Liam','Juliette','Maël','Lyna','Paul','Romane','Ilyes'];
+ const lasts=['Martin','Bernard','Dubois','Thomas','Robert','Richard','Petit','Durand','Leroy','Moreau','Simon','Laurent','Lefebvre','Michel','Garcia','David','Bertrand','Roux','Vincent','Fournier','Morel','Girard','André','Mercier','Dupont','Lambert','Bonnet','François','Martinez','Legrand','Garnier','Faure','Rousseau','Blanc','Guerin','Muller','Henry','Roussel','Nicolas','Perrin','Morin','Mathieu','Clement','Gauthier','Dumont','Lopez','Fontaine','Chevalier'];
+ const students=[];classes.forEach((c,ci)=>{for(let i=0;i<24;i++){const n=ci*24+i;students.push({id:'ex-st'+n,classId:c.id,first:firsts[n],last:lasts[(n*7)%lasts.length]})}});
+ const groups=['Groupe 1','Groupe 2','Groupe 3','Groupe 4'].flatMap((g,i)=>classes.map(c=>({id:'ex-gr'+i+c.id,classId:c.id,name:g})));
+ const timetable=[
+  {id:'ex-tt1',year:y.id,classId:'ex-5B',weekday:'2',time:'10:05',duration:'110',freq:'all',name:'EPS'},
+  {id:'ex-tt2',year:y.id,classId:'ex-5B',weekday:'4',time:'15:00',duration:'55',freq:'A',name:'EPS'},
+  {id:'ex-tt3',year:y.id,classId:'ex-4A',weekday:'1',time:'08:00',duration:'110',freq:'all',name:'EPS'},
+  {id:'ex-tt4',year:y.id,classId:'ex-4A',weekday:'5',time:'13:30',duration:'55',freq:'B',name:'EPS'}
+ ];
+ const cycles=[['ex-5B','Demi-fond','2026-09-01','2026-10-16'],['ex-5B','Badminton','2026-11-02','2026-12-18'],['ex-5B','Acrosport','2027-01-04','2027-02-12'],['ex-5B','Basket-ball','2027-03-01','2027-04-09'],['ex-5B','Course d’orientation','2027-04-26','2027-06-12'],
+  ['ex-4A','Handball','2026-09-01','2026-10-16'],['ex-4A','Natation','2026-11-02','2026-12-18'],['ex-4A','Danse','2027-01-04','2027-02-12'],['ex-4A','Volley-ball','2027-03-01','2027-04-09'],['ex-4A','Athlétisme','2027-04-26','2027-06-12']].map(([classId,name,start,end],i)=>({id:'ex-cy'+i,classId,name,start,end}));
+ const t=today();
+ const restrictions=[{id:'ex-r1',student:'ex-st1',start:addDays(t,-3),end:addDays(t,10),name:'Entorse cheville : pas de course ni de saut. Arbitrage, observation.'},{id:'ex-r2',student:'ex-st30',start:addDays(t,-40),end:addDays(t,-20),name:'Fracture du poignet : pas d’appui sur le bras gauche.'}];
+ const grades=[];students.forEach((s,i)=>{grades.push({id:'ex-g'+i,student:s.id,name:s.classId==='ex-5B'?'Demi-fond · 3×500 m':'Handball · match',grade:String(Math.round((8+rnd()*11)*2)/2)})});
+ const observations=[['ex-st0','Très bonne gestion de l’effort, conseille ses camarades.'],['ex-st3','Manque d’engagement en fin de séance, à encourager.'],['ex-st5','Progrès nets sur le service long au badminton.'],['ex-st26','Excellente coordination en natation, peut viser le niveau 3.'],['ex-st31','Refuse de passer dans l’eau, à voir avec la famille.']].map(([student,name],i)=>({id:'ex-ob'+i,student,name}));
+ const comments=[['ex-st0','Élève moteur et respectueux. Très bon trimestre.'],['ex-st7','Des efforts, mais des oublis de tenue trop fréquents.'],['ex-st24','Investie et volontaire, de beaux progrès.']].map(([student,name],i)=>({id:'ex-co'+i,student,name}));
+ await transaction(stores,tx=>{
+  for(const k of stores)tx.objectStore(k).clear();
+  const put=(k,rows)=>rows.forEach(r=>tx.objectStore(k).put(r));
+  put('years',[y]);put('holidays',holidays);put('classes',classes);put('students',students);put('groups',groups);put('timetable',timetable);put('cycles',cycles);put('restrictions',restrictions);put('grades',grades);put('observations',observations);put('comments',comments);
+ });
+ await load();
+ await syncSlots(y.start);
+ // Appels passés : la plupart des élèves présents, quelques exceptions.
+ const past=data.sessions.filter(isOver),rec=[],upd=[];
+ const weights=[['Absent',.05],['Retard',.03],['Oubli de tenue',.03],['Oubli de chaussures',.015],['Certificat médical',.01],['Mot des parents',.015]];
+ for(const s of past){
+  upd.push({...s,called:'1'});
+  for(const p of pupilsOf(s.classId)){let x=rnd();for(const [st,w] of weights){if(x<w){rec.push({id:s.id+'/'+p.id,sessionId:s.id,student:p.id,status:st});break}x-=w}}
+ }
+ // Une séance passée et une séance future supprimées avec un motif.
+ const ex1=past.find(s=>s.classId==='ex-4A'&&s.date>='2026-10-01'),ex2=data.sessions.filter(s=>s.classId==='ex-5B'&&s.date>t).sort(byDate)[3];
+ await transaction(['sessions','attendance'],tx=>{
+  for(const s of upd)tx.objectStore('sessions').put(ex1&&s.id===ex1.id?{...s,called:undefined,cancelled:'Sortie scolaire'}:s);
+  for(const r of rec)if(!ex1||r.sessionId!==ex1.id)tx.objectStore('attendance').put(r);
+  if(ex2)tx.objectStore('sessions').put({...ex2,cancelled:'Conseil de classe / réunion'});
+ });
+ // Une séance ponctuelle aujourd'hui (si jour de classe sans cours) pour voir le tableau de bord en action.
+ if(weekdayOf(t)>=1&&weekdayOf(t)<=5&&!holidayOf(t)&&yearOf(t)&&!data.sessions.some(s=>s.date===t))
+  await transaction('sessions',tx=>tx.objectStore('sessions').put({id:'ex-today',classId:'ex-4A',date:t,time:'14:00',duration:'110',name:'Séance de rattrapage'}));
+ await load();
+ // Retire les champs vides éventuels (les sauvegardes n'acceptent que du texte).
+ const dirty=data.sessions.filter(s=>Object.values(s).some(v=>typeof v!=='string'));
+ if(dirty.length){await transaction('sessions',tx=>dirty.forEach(s=>tx.objectStore('sessions').put(Object.fromEntries(Object.entries(s).filter(([,v])=>typeof v==='string')))));await load()}
+ sessionId='';classFilter='';editing={};
+ location.hash='#home';render();notify('Données d’exemple chargées : 2 classes, 48 élèves.');
 }
 
 // ---------- Listes génériques : ajout, modification, suppression ----------
 function renderList(k){
  if(k==='students'&&data.classes.length)importPanel();
  if(k==='sessions'){const n=el('p','',view,'muted');n.append('Les séances régulières viennent de votre ');link(n,'planning','emploi du temps');n.append('. Ajoutez ici une séance ponctuelle (rattrapage, sortie, évaluation…).')}
+ if(k==='cycles')el('p','Indiquez le début et la fin du cycle : le nombre de séances est calculé à partir du calendrier (emploi du temps, vacances et séances supprimées).',view,'muted');
  renderCollection(k,view);
 }
 
@@ -423,22 +582,31 @@ function renderCollection(k,parent){
    if(type==='number'){input.min=0;input.max=20;input.step='any';input.inputMode='decimal'}
    if(type==='date'&&key!=='end')input.value=today();
    if(def)input.value=def;
-   if(k==='holidays'&&key==='name'){input.setAttribute('list','holiday-names');const dl=el('datalist','',l);dl.id='holiday-names';for(const v of ['Toussaint','Noël','Hiver','Printemps','Pont de l’Ascension','Été'])dl.append(new Option(v))}
+   if(k==='holidays'&&key==='name'){input.setAttribute('list','holiday-names');const dl=el('datalist','',l);dl.id='holiday-names';for(const v of ['Toussaint','Noël','Hiver','Printemps','Pont de l’Ascension','Été','Jour férié'])dl.append(new Option(v))}
   }
   input.name=key;input.required=!(k==='sessions'&&key==='time');
   if(old&&old[key]!=null)input.value=old[key];
  }
  const btns=el('div','',form,'form-actions');
  el('button',old?'Enregistrer':'Ajouter',btns,'primary');
- if(old){const c=el('button','Annuler',btns);c.type='button';c.onclick=()=>{editing={};render()}}
+ if(old)button('Annuler',btns).onclick=()=>{editing={};render()};
+ if(k==='cycles'){
+  const hint=el('p','',p,'hint');
+  const update=()=>{const v=Object.fromEntries(new FormData(form));if(!v.classId||!v.start||!v.end||v.end<v.start){hint.textContent='Choisissez la classe, le début et la fin du cycle.';return}
+   const list=sessionsBetween(v.classId,v.start,v.end);
+   hint.textContent=list.length?'Ce cycle compte '+plural(list.length,'séance')+' ('+fmtDate(list[0].date)+' → '+fmtDate(list.at(-1).date)+').':data.timetable.some(s=>s.classId===v.classId)?'Aucune séance sur cette période.':'Aucune séance : renseignez d’abord l’emploi du temps de cette classe.'};
+  form.addEventListener('input',update);form.addEventListener('change',update);update();
+ }
  form.onsubmit=async e=>{
   e.preventDefault();const row=Object.fromEntries(new FormData(form));
   if(row.end&&row.end<row.start){notify('La fin doit suivre le début.');return}
   const rec={...old,...row,id:old?.id||crypto.randomUUID()};
+  if(k==='cycles')delete rec.goal;
   if(k==='sessions'&&old?.slot)rec.custom='1';
   editing={};
   await transaction(k,t=>t.objectStore(k).put(rec));await load();
   let msg=old?'Modifications enregistrées.':'Ajouté.';
+  if(k==='cycles')msg+=' '+plural(cycleSessions(rec).length,'séance')+' dans ce cycle.';
   if(['timetable','holidays','years'].includes(k)){const r=await syncSlots();if(r.added||r.removed)msg+=' Séances : '+r.added+' ajoutée(s), '+r.removed+' retirée(s).'}
   render();notify(msg);
  };
@@ -456,10 +624,10 @@ function renderCollection(k,parent){
   const s=select(el('label','Période',f),[['upcoming','À venir'],['past','Passées'],['all','Toutes']]);s.value=period;s.onchange=()=>{period=s.value;render()};
   const t=today();if(period==='upcoming')rows=rows.filter(r=>r.date>=t);if(period==='past')rows=rows.filter(r=>r.date<t);
  }
- const h=el('h2',(listTitles[k]||pages[k])+' · '+rows.length,head,'section-title');h.style.order=-1;
+ el('h2',(listTitles[k]||pages[k])+' · '+rows.length,head,'section-title').style.order=-1;
  if(k==='students')rows.sort((a,b)=>(a.last+a.first).localeCompare(b.last+b.first,'fr'));
  else if(k==='timetable')rows.sort((a,b)=>(a.weekday+a.time).localeCompare(b.weekday+b.time));
- else if(k==='holidays'||(k==='sessions'&&period==='upcoming'))rows.sort(byDate);
+ else if(k==='holidays'||k==='cycles'||(k==='sessions'&&period==='upcoming'))rows.sort(byDate);
  else if(rows[0]?.date||rows[0]?.start)rows.sort((a,b)=>byDate(b,a));
  if(!rows.length){el('p',k==='timetable'?'Aucun cours. Ajoutez votre premier créneau ci-dessus.':'Rien pour le moment. Utilisez le formulaire ci-dessus pour commencer.',parent,'empty');return}
  const list=el('div','',parent,'list');
@@ -469,54 +637,62 @@ function renderCollection(k,parent){
 }
 
 function renderItem(k,row,list){
- const item=el('article','',list,'item'+(editing.k===k&&editing.id===row.id?' selected':''));
+ const item=el('article','',list,'item'+(editing.k===k&&editing.id===row.id?' selected':'')+(row.cancelled?' cancelled':''));
  const student=k==='students'?row:row.student?find('students',row.student):null;
  if(student)avatar(student,item);else icon(k,el('span','',item,'avatar'+(row.classId?' t'+tint(row.classId):'')));
  const b=el('div','',item,'body');
  const t=today();
  const days=r=>Math.round((new Date(r.end)-new Date(r.start))/864e5)+1;
+ const cyc=k==='cycles'?cycleSessions(row):[];
  const parts={
   years:[row.name,fmtDate(row.start)+' → '+fmtDate(row.end)+' · 1re semaine '+(row.firstWeek==='B'?'B':'A')],
   classes:[row.name,ref('years',row.year)+' · '+plural(pupilsOf(row.id).length,'élève')],
   students:[label(row),ref('classes',row.classId)],
   groups:[row.name,ref('classes',row.classId)],
-  cycles:[row.name,ref('classes',row.classId)+(row.goal?' · '+row.goal:'')],
-  sessions:[ref('classes',row.classId)+' · '+row.name,[fmtDate(row.date),timeRange(row)].filter(Boolean).join(' · ')],
+  cycles:[ref('classes',row.classId)+' · '+row.name,row.start?fmtDate(row.start,{day:'numeric',month:'short'})+' → '+fmtDate(row.end,{day:'numeric',month:'short'})+' · '+plural(cyc.length,'séance')+(cyc.length?' ('+cyc.filter(isStarted).length+' faites)':''):'Dates à définir : modifiez le cycle'],
+  sessions:[sessionTitle(row),[fmtDate(row.date),timeRange(row),cycleText(row)].filter(Boolean).join(' · ')],
   restrictions:[label(student),fmtDate(row.start)+' → '+fmtDate(row.end)+' · '+row.name],
   grades:[label(student),row.name+' · '+ref('classes',student?.classId)],
   comments:[label(student),row.name],
   observations:[label(student),row.name],
   timetable:[enumLabel('weekday',row.weekday)+' · '+timeRange(row),ref('classes',row.classId)+' · '+row.name+' · '+enumLabel('duration',row.duration)],
-  holidays:[row.name,fmtDate(row.start,{day:'numeric',month:'short'})+' → '+fmtDate(row.end,{day:'numeric',month:'short',year:'numeric'})+' · '+plural(days(row),'jour')]
+  holidays:[row.name,(row.start===row.end?fmtDate(row.start,{weekday:'long',day:'numeric',month:'long',year:'numeric'}):fmtDate(row.start,{day:'numeric',month:'short'})+' → '+fmtDate(row.end,{day:'numeric',month:'short',year:'numeric'})+' · '+plural(days(row),'jour'))]
  }[k];
  el('span',parts[0]||'Élément supprimé',b,'title');el('span',parts[1],b,'meta');
  if(k==='grades'){const g=el('span',String(row.grade).replace('.',','),item,'grade');el('small',' /20',g)}
  if(k==='timetable')el('span',row.freq==='all'?'Chaque semaine':enumLabel('freq',row.freq),b,'tag'+(row.freq==='all'?'':' now'));
- if((k==='holidays'||k==='restrictions')&&row.start<=t&&row.end>=t)el('span','En cours',b,'tag warn');
- if(k==='sessions'&&isNow(row))el('span','En cours',b,'tag now');
- if(k==='students'&&restrictedIds().has(row.id))el('span','Inaptitude',b,'tag warn');
+ if((k==='holidays'||k==='restrictions'||k==='cycles')&&row.start<=t&&row.end>=t)el('span','En cours',b,'tag '+(k==='cycles'?'now':'warn'));
+ if(k==='sessions'&&row.cancelled)el('span','Supprimée · '+row.cancelled,b,'tag warn');
+ else if(k==='sessions'&&isNow(row))el('span','En cours',b,'tag now');
+ if(k==='students'&&restrictionOf(row.id))el('span','Inaptitude',b,'tag warn');
  const acts=el('div','',item,'item-actions');
- if(k==='sessions'&&isStarted(row))link(acts,'attendance','Appel','btn small').onclick=()=>{sessionId=row.id};
- iconButton('edit','Modifier',acts).onclick=()=>{editing={k,id:row.id};render();const f=view.querySelector('.panel.editing');f?.scrollIntoView({behavior:'smooth',block:'start'});f?.querySelector('input,select')?.focus({preventScroll:true})};
+ if(k==='sessions'){
+  if(!row.cancelled&&isStarted(row))link(acts,'attendance','Appel','btn small').onclick=()=>{sessionId=row.id};
+  if(!row.cancelled)iconButton('edit','Modifier',acts).onclick=()=>startEdit(k,row);
+  iconButton('trash','Supprimer',acts,'danger').onclick=()=>row.cancelled?openSession(row):cancelSession(row);
+  return;
+ }
+ iconButton('edit','Modifier',acts).onclick=()=>startEdit(k,row);
  iconButton('trash','Supprimer',acts,'danger').onclick=()=>remove(k,row.id);
 }
+function startEdit(k,row){editing={k,id:row.id};render();const f=view.querySelector('.panel.editing');f?.scrollIntoView({behavior:'smooth',block:'start'});f?.querySelector('input,select')?.focus({preventScroll:true})}
 
 // Suppression avec cascade : retire aussi tout ce qui dépend de l'élément, après confirmation.
 async function remove(k,id){
  const acc={};
  (function collect(key,rid){acc[key]??=new Set();if(acc[key].has(rid))return;acc[key].add(rid);for(const [dk,f] of deps[key]||[])for(const r of data[dk])if(r[f]===rid)collect(dk,r.id)})(k,id);
  const row=find(k,id);
- const name=k==='sessions'?ref('classes',row.classId)+' · '+row.name+' ('+fmtDate(row.date)+')':k==='timetable'?enumLabel('weekday',row.weekday)+' '+hh(row.time)+' · '+ref('classes',row.classId):label(row)||nouns[k][0];
+ const name=k==='sessions'?sessionTitle(row)+' ('+fmtDate(row.date)+')':k==='timetable'?enumLabel('weekday',row.weekday)+' '+hh(row.time)+' · '+ref('classes',row.classId):label(row)||nouns[k][0];
  const also=Object.entries(acc).filter(([key,s])=>key!==k&&key!=='attendance'&&s.size).map(([key,s])=>plural(s.size,...nouns[key]));
- let msg='Supprimer « '+name+' » ?';
- if(also.length)msg+='\n\nCela supprimera aussi : '+also.join(', ')+(acc.attendance?.size?' et les présences associées':'')+'.';
- else if(acc.attendance?.size)msg+='\n\nLes présences associées seront aussi supprimées.';
- if(k==='timetable')msg+='\n\nLes séances futures de ce cours seront retirées (sauf celles modifiées à la main ou avec un appel).';
+ let msg='Supprimer définitivement « '+name+' » ?';
+ if(also.length)msg+='\n\nCela supprimera aussi : '+also.join(', ')+(acc.attendance?.size?' et les appels associés':'')+'.';
+ else if(acc.attendance?.size)msg+='\n\nLes appels associés seront aussi supprimés.';
+ if(k==='timetable')msg+='\n\nLes séances futures de ce cours seront retirées (sauf celles modifiées, supprimées avec un motif ou avec un appel).';
  if(!confirm(msg))return false;
  const slot=k==='sessions'&&row.slot&&find('timetable',row.slot);
  await transaction(Object.keys(acc).concat(slot?['timetable']:[]),t=>{
   for(const [key,s] of Object.entries(acc))for(const rid of s)t.objectStore(key).delete(rid);
-  // Une séance régulière supprimée est mémorisée pour ne pas être recréée.
+  // Une séance régulière effacée est mémorisée pour ne pas être recréée.
   if(slot){const date=row.id.split('@')[1]||row.date;t.objectStore('timetable').put({...slot,skip:[slot.skip,date].filter(Boolean).join(',')})}
  });
  if(editing.id&&acc[editing.k]?.has(editing.id))editing={};
@@ -533,7 +709,7 @@ function renderSearch(q){
  for(const s of data.students)if(norm(label(s)+' '+s.last+' '+s.first).includes(n))hits.push(['students',s,label(s),ref('classes',s.classId)]);
  for(const c of data.classes)if(norm(c.name).includes(n))hits.push(['classes',c,c.name,plural(pupilsOf(c.id).length,'élève')]);
  for(const c of data.cycles)if(norm(c.name).includes(n))hits.push(['cycles',c,c.name,ref('classes',c.classId)]);
- hits.push(...data.sessions.filter(s=>s.date>=t&&norm(s.name+' '+ref('classes',s.classId)).includes(n)).sort(byDate).slice(0,15).map(s=>['sessions',s,ref('classes',s.classId)+' · '+s.name,fmtDate(s.date)+(s.time?' '+hh(s.time):'')]));
+ hits.push(...data.sessions.filter(s=>active(s)&&s.date>=t&&norm(sessionTitle(s)+' '+s.name).includes(n)).sort(byDate).slice(0,15).map(s=>['sessions',s,sessionTitle(s),fmtDate(s.date)+(s.time?' '+hh(s.time):'')]));
  el('p',plural(hits.length,'résultat')+' pour « '+q+' »',view,'muted');
  const list=el('div','',view,'list');
  for(const [k,row,title,meta] of hits.slice(0,60)){
@@ -582,5 +758,5 @@ function importPanel(){
 window.onunhandledrejection=()=>notify('Opération interrompue. Vérifiez le stockage disponible.');
 search.oninput=()=>render();
 window.onhashchange=()=>{search.value='';render();window.scrollTo(0,0)};
-await load();render();
+await load();await migrateAttendance();render();
 if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js');
