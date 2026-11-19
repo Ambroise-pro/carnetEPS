@@ -1,6 +1,6 @@
 // Numéro de version affiché dans l'application : l'incrémenter à chaque nouvelle livraison
 // (et le reporter dans sw.js pour renouveler le cache hors ligne).
-const APP_VERSION=15;
+const APP_VERSION=16;
 
 // ---------- Structure de l'application ----------
 const pages={home:'Tableau de bord',calendar:'Calendrier',sessions:'Séances',attendance:'Appel',classes:'Classes',students:'Élèves',groups:'Groupes',cycles:'Cycles',restrictions:'Inaptitudes',grades:'Évaluations',comments:'Appréciations',observations:'Observations',planning:'Paramètres du calendrier',absences:'Absences',settings:'Paramètres',student:'Fiche élève',session:'Séance',boards:'Tableaux',board:'Tableau',module:'Application',apps:'Applications',years:'Années scolaires',backup:'Sauvegardes'};
@@ -1367,25 +1367,33 @@ function parseICS(text){
   const [name,...ps]=line.slice(0,i).split(';'),params=ps.join(';'),val=line.slice(i+1);
   if(name==='DTSTART')ev.start=when(val,params);else if(name==='DTEND')ev.end=when(val,params);
   else if(name==='SUMMARY')ev.summary=unesc(val);else if(name==='DESCRIPTION')ev.description=unesc(val);
-  else if(name==='LOCATION')ev.location=unesc(val);else if(name==='UID')ev.uid=val;else if(name==='STATUS')ev.status=val;
+  else if(name==='LOCATION')ev.location=unesc(val);else if(name==='UID')ev.uid=val;else if(name==='STATUS')ev.status=val;else if(name==='CATEGORIES')ev.categories=unesc(val);
  }
- return events.filter(e=>!e.start.allDay&&e.start.min!=null).map(e=>{
-  const desc=e.description||'',field=re=>{const m=desc.match(re);return m?m[1].trim():''};
-  const parts=(e.summary||'').split(/\s+-\s+/).map(s=>s.trim()).filter(Boolean);
-  // Classe ou groupe : champs de la description Pronote, sinon la partie du titre qui ressemble à une classe
-  const group=field(/(?:Classes?|Groupes?|Parties? de classe)\s*:\s*([^\n]+)/i)||parts.slice(1).find(s=>/\d/.test(s)&&s.length<=24)||parts.find(s=>/^\d\S*/.test(s))||parts[0]||'Sans nom';
-  const rawSubject=field(/Mati[eè]re\s*:\s*([^\n]+)/i)||parts[0]||'';
-  const subject=/phys.*sport|^e\.?\s?p\.?\s?s\.?$/i.test(rawSubject)?'EPS':rawSubject;
-  const cancelled=/CANCELLED/i.test(e.status||'')||/annul|prof\.? absent|absent/i.test((e.summary||'')+' '+desc);
+ // Uniquement les cours (Pronote exporte aussi conseils de classe, jours fériés, vacances).
+ const ent=v=>String(v||'').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&quot;/g,'"').replace(/&#39;/g,"'").replace(/&amp;/g,'&');
+ return events.filter(e=>!e.start.allDay&&e.start.min!=null&&(!e.categories||/^cours/i.test(e.categories))).map(e=>{
+  const desc=ent(e.description),cat=ent(e.categories);
+  const field=re=>{const m=desc.match(re);return m?m[1].trim():''};
+  // Titre sans préfixe (« Cours annulé : », « Reporté : »…)
+  const title=ent(e.summary).replace(/^[^:\-]{3,30}\s:\s+/,'');
+  const parts=title.split(/\s+-\s+/).map(x=>x.trim()).filter(Boolean);
+  // Classe ou groupe : Groupe Pronote, sinon Classe, sinon les classes des « Parties de classe », sinon le titre
+  const groupe=field(/^Groupes?\s*:\s*(.+)$/im),classe=field(/^Classes?\s*:\s*(.+)$/im),partsCl=field(/^Parties? de classe\s*:\s*(.+)$/im);
+  // Parties de classe : seulement pour un petit regroupement (l'AS liste les classes de tous ses inscrits)
+  const partList=[...new Set([...partsCl.matchAll(/<([^>]+)>/g)].map(m=>m[1]))],fromParts=partList.length&&partList.length<=3?partList.join(' + '):'';
+  const rawSubject=field(/^Mati[eè]re\s*:\s*(.+)$/im)||parts[0]||'';
+  const subject=/phys.*sport|^e\.?\s?p\.?\s?s\.?$/i.test(rawSubject)?'EPS':/^as\.?\s*sport/i.test(rawSubject)?'AS sport':rawSubject;
+  const group=subject==='AS sport'?'AS sport':groupe||classe||fromParts||parts.slice(1).find(x=>/^(?=.*\d)[A-Z0-9]{2,5}$/i.test(x)||/^T[A-Z]$/.test(x))||(subject==='EPS'?'EPS (sans classe)':subject)||'Sans nom';
+  const status=/annul/i.test(cat+' '+e.summary)||/CANCELLED/i.test(e.status||'')?'Annulé dans Pronote':/report/i.test(cat)?'Reporté dans Pronote':'';
   const dur=e.end&&e.end.date===e.start.date&&e.end.min!=null?Math.max(5,e.end.min-e.start.min):55;
-  return {uid:e.uid||'',date:e.start.date,time:fromMin(e.start.min),duration:String(dur),group,subject,location:e.location||field(/Salles?\s*:\s*([^\n]+)/i),cancelled};
+  return {uid:e.uid||'',date:e.start.date,time:fromMin(e.start.min),duration:String(dur),group,subject,location:ent(e.location)||field(/^Salles?\s*:\s*(.+)$/im),cancelled:status,kind:cat.replace(/^cours\s*-\s*/i,'')};
  });
 }
+// Lecture du lien iCal : directe si Pronote l'autorise, sinon par le relais api/ical (application publiée sur Vercel).
 async function icalFetch(url){
  const u=url.trim().replace(/^webcal:/i,'https:');
- const r=await fetch(u,{cache:'no-store'});if(!r.ok)throw Error('HTTP '+r.status);
- const t=await r.text();if(!/BEGIN:VCALENDAR/.test(t))throw Error('format');
- return t;
+ const get=async target=>{const r=await fetch(target,{cache:'no-store'});if(!r.ok)throw Error('HTTP '+r.status);const t=await r.text();if(!/BEGIN:VCALENDAR/.test(t))throw Error('format');return t};
+ try{return await get(u)}catch{return await get('api/ical?url='+encodeURIComponent(u))}
 }
 function icalSlots(list){
  const days=['dim.','lun.','mar.','mer.','jeu.','ven.','sam.'],seen=new Map();
@@ -1400,8 +1408,8 @@ async function icalImport(events,map){
   const id='pronote:'+(e.uid||e.group)+':'+e.date+':'+e.time;ids.add(id);
   const old=find('sessions',id);
   const row={...old,id,classId,date:e.date,time:e.time,duration:e.duration,name:old?.name||e.subject||'EPS',source:'pronote',...(e.location?{location:e.location}:{})};
-  if(e.cancelled&&!old?.cancelled)row.cancelled='Annulé dans Pronote';
-  if(!e.cancelled&&old?.cancelled==='Annulé dans Pronote')delete row.cancelled;
+  if(e.cancelled&&(!old?.cancelled||/dans Pronote$/.test(old.cancelled)))row.cancelled=e.cancelled;
+  if(!e.cancelled&&/dans Pronote$/.test(old?.cancelled||''))delete row.cancelled;
   if(old&&(old.custom||isCalled(old)))continue;
   if(JSON.stringify(old)!==JSON.stringify(row))put.push(row);
  }
