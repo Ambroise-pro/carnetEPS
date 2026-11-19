@@ -1,5 +1,5 @@
 // Reporter ici le numéro APP_VERSION de app.js à chaque livraison.
-const VERSION=31,cache='eps-v'+VERSION,FILES='eps-files';
+const VERSION=32,cache='eps-v'+VERSION,FILES='eps-files';
 const shell=['./','index.html','app.js','style.css','manifest.webmanifest','icon.png','icon512.png','trombi.js','vendor/pdfjs/pdf.mjs','vendor/pdfjs/pdf.worker.mjs','board/board.js','board/board.css','board/host.js','board/host.css'];
 // Shell : mis en cache à l'installation (obligatoire). Applications associées et bibliothèques (offline.json) :
 // cache durable « eps-files », gardé d'une version à l'autre ; seuls les fichiers nouveaux ou modifiés sont téléchargés,

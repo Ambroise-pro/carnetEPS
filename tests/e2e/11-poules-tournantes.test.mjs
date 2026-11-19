@@ -46,6 +46,17 @@ test('Poules tournantes : poule créée depuis la classe, résultats envoyés à
     assert.ok(mine().filter(r => /Classement/.test(r.label)).every(r => /^\de\/6$/.test(r.value)));
     assert.equal(db.grades.length, 5, 'aucune note ajoutée');
     assert.ok(db.results.some(r => !r.student && /Classement/.test(r.value || '')), 'résumé de la poule dans la séance');
+    // Affichage : dans la séance, une ligne par élève (colonnes Classement, Points, Goal average, triées par classement) ;
+    // dans la fiche élève, une ligne pour la poule ; résumé avec ses retours à la ligne.
+    await go(page, 'session=s3'); await page.waitForTimeout(500);
+    const panel = page.locator('.panel', {hasText: 'Résultats des applications'});
+    const table = panel.locator('table').filter({has: page.locator('th', {hasText: 'Goal average'})});
+    assert.deepEqual(await table.locator('thead th').allInnerTexts(), ['Élève', 'Classement', 'Points', 'Goal average']);
+    assert.equal(await table.locator('tbody tr').count(), 6);
+    assert.equal(await table.locator('tbody tr').first().locator('td').first().innerText(), '1er/6');
+    assert.equal(await panel.locator('.summary-text').evaluate(e => getComputedStyle(e).whiteSpace), 'pre-line');
+    await go(page, 'student=st1'); await page.waitForTimeout(400);
+    assert.match(await page.locator('.result-list').first().innerText(), /Classement\s+\d(er|e)\/6[\s\S]*Points\s+\d+ pts[\s\S]*Goal average/);
     // Nouvelle synchronisation (réouverture) : aucun doublon
     await go(page, 'module=poules-tournantes'); await page.waitForTimeout(1500);
     await go(page, 'home'); await settle(page, 1500);

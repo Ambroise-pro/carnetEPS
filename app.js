@@ -1,6 +1,6 @@
 // Numéro de version affiché dans l'application : l'incrémenter à chaque nouvelle livraison
 // (et le reporter dans sw.js pour renouveler le cache hors ligne).
-const APP_VERSION=31;
+const APP_VERSION=32;
 
 // ---------- Structure de l'application ----------
 const pages={home:'Tableau de bord',calendar:'Calendrier',sessions:'Séances',attendance:'Appel',classes:'Classes',students:'Élèves',groups:'Groupes',cycles:'Cycles',restrictions:'Inaptitudes',grades:'Évaluations',comments:'Appréciations',observations:'Observations',planning:'Paramètres du calendrier',absences:'Absences',settings:'Paramètres',student:'Fiche élève',session:'Séance',boards:'Tableaux',board:'Tableau',module:'Application',apps:'Applications',averages:'Moyennes',years:'Années scolaires',backup:'Sauvegardes'};
@@ -1039,11 +1039,20 @@ function renderSession(id){
 
  resultsPanel(s);
 }
+// Présentation des résultats d'applications : préfixe commun retiré des épreuves (« Poules tournantes · Points » → « Points »),
+// classement en premier, « 1e » affiché « 1er ». Les données enregistrées ne changent pas.
+function labelPrefix(labels){if(labels.length<2)return '';const parts=labels.map(l=>l.split(' · '));let n=0;while(parts.every(p=>p.length>n+1&&p[n]===parts[0][n]))n++;return n?parts[0].slice(0,n).join(' · ')+' · ':''}
+const isRank=l=>/classement|rang\b/i.test(l);
+const resultText=(r,rank)=>{const v=[r.value,r.unit].filter(Boolean).join(' ');return rank?v.replace(/^1e(?=\b|\/|\s)/,'1er'):v};
+const isPoints=l=>/points?\b|pts|score/i.test(l);
+const orderLabels=labels=>[...labels.filter(isRank),...labels.filter(l=>!isRank(l)&&isPoints(l)),...labels.filter(l=>!isRank(l)&&!isPoints(l))];
+// Le préfixe n'est rappelé que s'il apporte une information par rapport au nom de l'application.
+const extraPrefix=(pre,module)=>{const p=pre.replace(/ · $/,'');return p&&!module.toLocaleLowerCase('fr').startsWith(p.toLocaleLowerCase('fr'))?p:''};
 function resultsPanel(s){
  const p=panel(view,'Résultats des applications');
  const all=data.results.filter(r=>r.sessionId===s.id),rows=all.filter(r=>r.student);
  const sums=all.filter(r=>!r.student);
- if(sums.length){const box=el('div','',p,'module-summary');for(const x of sums){const r=el('div','',box,'row');icon('modules',el('span','',r,'avatar'));const b=el('div','',r,'body');el('span',x.module,b,'title');el('span',x.value,b,'meta')}}
+ if(sums.length){const box=el('div','',p,'module-summary');for(const x of sums){const r=el('div','',box,'row');icon('modules',el('span','',r,'avatar'));const b=el('div','',r,'body');el('span',x.module,b,'title');el('span',x.value.startsWith(x.module)?x.value.slice(x.module.length).replace(/^\s*[—·:-]\s*/,''):x.value,b,'meta summary-text')}}
  if(!rows.length&&!sums.length)el('p','Les résultats des applications associées (chronomètre, tests physiques, évaluations…) apparaîtront ici, séance par séance et élève par élève.',p,'muted');
  const mods=[...new Set(rows.map(r=>r.module))];
  for(const m of mods){
@@ -1051,9 +1060,21 @@ function resultsPanel(s){
   const h=el('div','',p,'panel-head');el('h3',m+' · '+plural(list.length,'résultat'),h);
   button('Retirer',h,'small danger').onclick=async()=>{if(!confirm('Retirer les '+list.length+' résultats « '+m+' » de cette séance ?'))return;await transaction('results',t=>list.forEach(r=>t.objectStore('results').delete(r.id)));await load();render();notify('Résultats retirés.')};
   const box=el('div','',p,'table-box flat');const tb=el('table','',box,'stats');
-  const hr=el('tr','',el('thead','',tb));el('th','Élève',hr);el('th','Épreuve',hr);el('th','Résultat',hr,'num');
-  const body=el('tbody','',tb);
-  for(const r of list){const tr=el('tr','',body);const th=el('th','',tr);const st=find('students',r.student);link(th,'student='+r.student,label(st)||'Élève supprimé');el('td',r.label,tr);el('td',[r.value,r.unit].filter(Boolean).join(' '),tr,'num strong')}
+  const labels=orderLabels([...new Set(list.map(r=>r.label))]);
+  if(labels.length<=6){
+   // Une ligne par élève, une colonne par épreuve ; tri par classement s'il existe.
+   const pre=labelPrefix(labels);h.querySelector('h3').textContent=[m,extraPrefix(pre,m),plural(new Set(list.map(r=>r.student)).size,'élève')].filter(Boolean).join(' · ');
+   const hr=el('tr','',el('thead','',tb));el('th','Élève',hr);for(const l of labels)el('th',l.slice(pre.length)||l,hr,'num');
+   const by=new Map();for(const r of list){if(!by.has(r.student))by.set(r.student,{});const o=by.get(r.student);(o[r.label]??=[]).push(r)}
+   const rank=labels.find(isRank),num=st=>{const v=by.get(st)[rank]?.[0]?.value;const n=parseFloat(v);return isFinite(n)?n:1e9};
+   const order=[...by.keys()];if(rank)order.sort((a,b)=>num(a)-num(b));
+   const body=el('tbody','',tb);
+   for(const st of order){const tr=el('tr','',body);const th=el('th','',tr);link(th,'student='+st,label(find('students',st))||'Élève supprimé');for(const l of labels)el('td',(by.get(st)[l]||[]).map(r=>resultText(r,isRank(l))).join(' / ')||'—',tr,'num'+(isRank(l)?' strong':''))}
+  }else{
+   const hr=el('tr','',el('thead','',tb));el('th','Élève',hr);el('th','Épreuve',hr);el('th','Résultat',hr,'num');
+   const body=el('tbody','',tb);
+   for(const r of list){const tr=el('tr','',body);const th=el('th','',tr);const st=find('students',r.student);link(th,'student='+r.student,label(st)||'Élève supprimé');el('td',r.label,tr);el('td',resultText(r,isRank(r.label)),tr,'num strong')}
+  }
  }
  const imp=el('details','',p,'import-results');el('summary','Importer des résultats depuis un fichier (JSON)',imp);
  const f=el('input','',el('label','Fichier exporté par une application',imp));f.type='file';f.accept='.json,application/json';
@@ -1085,12 +1106,20 @@ async function importResults(s,file){
 }
 function studentResults(id){
  const rows=data.results.filter(r=>r.student===id).sort((a,b)=>byDate(b,a));
- const p=panel(view,'Résultats des applications · '+rows.length);
+ // Une ligne par séance et par application : « Classement 1er/6 · Points 13 pts · Goal average +9 ».
+ const groups=new Map();for(const r of rows){const k=r.sessionId+'|'+r.module;if(!groups.has(k))groups.set(k,[]);groups.get(k).push(r)}
+ const p=panel(view,'Résultats des applications · '+groups.size);
  if(!rows.length){el('p','Aucun résultat d’application pour le moment.',p,'muted');return}
  const box=el('div','',p,'table-box flat');const tb=el('table','',box,'stats');
- const hr=el('tr','',el('thead','',tb));el('th','Date',hr);el('th','Application',hr);el('th','Épreuve',hr);el('th','Résultat',hr,'num');
+ const hr=el('tr','',el('thead','',tb));el('th','Date',hr);el('th','Application',hr);el('th','Résultats',hr);
  const body=el('tbody','',tb);
- for(const r of rows){const tr=el('tr','',body);const th=el('th','',tr);link(th,'session='+r.sessionId,fmtDate(r.date));el('td',r.module,tr);el('td',r.label,tr);el('td',[r.value,r.unit].filter(Boolean).join(' '),tr,'num strong')}
+ for(const list of groups.values()){
+  const r0=list[0],labels=orderLabels([...new Set(list.map(r=>r.label))]),pre=labelPrefix(labels);
+  const tr=el('tr','',body);const th=el('th','',tr);link(th,'session='+r0.sessionId,fmtDate(r0.date));
+  el('td',[r0.module,extraPrefix(pre,r0.module)].filter(Boolean).join(' · '),tr);
+  const td=el('td','',tr,'result-list');
+  for(const l of labels)for(const r of list.filter(x=>x.label===l)){const sp=el('span','',td);el('span',(l.slice(pre.length)||l)+' ',sp,'muted');el('b',resultText(r,isRank(l)),sp)}
+ }
 }
 // Contenu et résultats d'exemple (appelé par loadSample).
 async function sampleContent(){

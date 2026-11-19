@@ -310,6 +310,9 @@ body.module-mode #view{gap:10px}
 .module-frame{width:100%;height:calc(100vh - 84px);height:calc(100dvh - 84px);border:1px solid var(--line);border-radius:16px;background:#fff}
 .module-summary{display:flex;flex-direction:column;gap:6px}
 .module-summary .row{background:#f1f6e6}
+.module-summary .summary-text{white-space:pre-line}
+.result-list{display:flex;flex-wrap:wrap;gap:4px 14px}
+.result-list>span{white-space:nowrap}
 
 /* ---------- Appel rapide et icône des modules ---------- */
 .quick-call .actions button{min-width:110px}
