@@ -1,6 +1,6 @@
 // Numéro de version affiché dans l'application : l'incrémenter à chaque nouvelle livraison
 // (et le reporter dans sw.js pour renouveler le cache hors ligne).
-const APP_VERSION=10;
+const APP_VERSION=11;
 
 // ---------- Structure de l'application ----------
 const pages={home:'Tableau de bord',calendar:'Calendrier',sessions:'Séances',attendance:'Appel',classes:'Classes',students:'Élèves',groups:'Groupes',cycles:'Cycles',restrictions:'Inaptitudes',grades:'Évaluations',comments:'Appréciations',observations:'Observations',planning:'Paramètres du calendrier',absences:'Absences',settings:'Paramètres',student:'Fiche élève',session:'Séance',boards:'Tableaux',board:'Tableau',module:'Module',years:'Années scolaires',backup:'Sauvegardes'};
@@ -461,12 +461,32 @@ function defaultSession(){
  const t=today(),n=nowMin(),todays=data.sessions.filter(s=>s.date===t&&active(s)).sort(byDate);
  return todays.find(isNow)||todays.find(s=>s.time&&toMin(s.time)>n)||todays.at(-1)||data.sessions.filter(s=>active(s)&&isStarted(s)).sort((a,b)=>byDate(b,a))[0]||data.sessions.slice().sort(byDate)[0];
 }
+// Séance du jour pour l'appel d'une classe : celle qui est prévue (en cours ou la plus proche), sinon une séance créée maintenant.
+async function sessionForCall(classId){
+ const t=today(),n=nowMin(),list=data.sessions.filter(s=>s.classId===classId&&s.date===t&&active(s)).sort(byDate);
+ const near=list.find(isNow)||list.slice().sort((a,b)=>Math.abs((a.time?toMin(a.time):n)-n)-Math.abs((b.time?toMin(b.time):n)-n))[0];
+ if(near)return near;
+ const slot=data.timetable.find(x=>x.classId===classId&&Number(x.weekday)===weekdayOf(t));
+ const s={id:crypto.randomUUID(),classId,date:t,time:fromMin(Math.floor(n/5)*5),duration:slot?.duration||'55',name:slot?.name||'EPS'};
+ await transaction('sessions',tx=>tx.objectStore('sessions').put(s));await load();
+ notify('Séance créée pour la '+ref('classes',classId)+' à '+hh(s.time)+'.');
+ return s;
+}
+function quickCall(parent){
+ if(!data.classes.length)return;
+ const box=el('section','',parent,'panel quick-call');
+ el('h2','Faire l’appel d’une classe',box);
+ el('p','Choisissez la classe : la séance du jour est ouverte, ou créée automatiquement si elle n’est pas prévue.',box,'muted');
+ const row=el('div','',box,'actions');
+ for(const c of data.classes){const b=button(c.name,row,c.id===find('sessions',sessionId)?.classId?'primary':'');b.onclick=async()=>{b.disabled=true;sessionId=(await sessionForCall(c.id)).id;render()}}
+}
 function renderAttendance(){
- if(!data.sessions.length){el('p','Aucune séance pour le moment.',view,'empty');link(view,'planning','Renseigner mon emploi du temps →','btn primary').style.alignSelf='start';return}
+ if(!data.sessions.length){quickCall(view);if(!data.classes.length){el('p','Créez d’abord une classe et ses élèves.',view,'empty');link(view,'classes','Créer une classe →','btn primary').style.alignSelf='start'}return}
  if(!find('sessions',sessionId))sessionId=defaultSession().id;
  const limit=addDays(today(),7);
  const options=data.sessions.filter(s=>(active(s)&&s.date<=limit)||s.id===sessionId).sort((a,b)=>byDate(b,a)).slice(0,150);
  const session=find('sessions',sessionId),pupils=pupilsOf(session.classId);
+ quickCall(view);
  const head=el('div','',view,'panel attendance-head');
  const s=select(el('label','Séance',head),options.map(r=>[r.id,fmtDate(r.date)+(r.time?' '+hh(r.time):'')+' · '+sessionTitle(r)]));
  s.value=sessionId;s.onchange=()=>{sessionId=s.value;render()};
@@ -968,6 +988,8 @@ function renderSession(id){
  button('Date, heure, classe…',acts).onclick=()=>{editing={k:'sessions',id:s.id};location.hash='#sessions'};
  if(s.cancelled)button('Rétablir / effacer…',acts,'danger').onclick=()=>openSession(s);else button('Supprimer…',acts,'danger').onclick=()=>cancelSession(s);
 
+ sessionModulesPanel(s);
+
  // Contenu pédagogique, enregistré automatiquement
  const p=panel(view,'Contenu de la séance');
  const status=el('span',hasContent(s)?'✓ Enregistré automatiquement':'Saisissez le contenu : il est enregistré automatiquement.',p.querySelector('.panel-head'),'autosave');
@@ -1214,7 +1236,7 @@ async function importModuleData(m,p){
  const sessionFor=(classId,date)=>{
   if(!find('classes',classId)||!/^\d{4}-\d{2}-\d{2}$/.test(date||''))return null;
   const l=data.sessions.filter(s=>s.classId===classId&&s.date===date).sort(byDate);
-  let s=l.find(active)||l[0]||rows.sessions.find(x=>x.classId===classId&&x.date===date);
+  let s=l.find(x=>active(x)&&usedModules(x).includes(m.id))||l.find(active)||l[0]||rows.sessions.find(x=>x.classId===classId&&x.date===date);
   if(!s){s={id:pre+classId+':'+date,classId,date,name:m.name,duration:'55'};rows.sessions.push(s)}
   return s};
  for(const g of p?.grades||[]){if(!find('students',g.studentId)||g.grade==null){skipped++;continue}
@@ -1271,9 +1293,33 @@ async function renderModule(id){
  moduleTimer=setInterval(async()=>{if(!frame.isConnected)return;await syncModule(m,{quiet:true});refresh()},20000);
 }
 let sessionReturn='';
+const usedModules=s=>(s?.modules||'').split(',').filter(Boolean);
+// Ouvre un module pour une séance : le module est mémorisé sur la séance, qui reçoit ensuite tout ce qu'il renvoie.
+async function useModule(s,m){
+ const cur=find('sessions',s.id);
+ if(cur&&!usedModules(cur).includes(m.id)){await transaction('sessions',t=>t.objectStore('sessions').put({...cur,modules:[...usedModules(cur),m.id].join(',')}));await load()}
+ sessionReturn='session='+s.id;moduleFocus={classId:s.classId,sessionId:s.id};
+ location.hash='#module='+m.id;
+}
 function moduleButtons(parent,s){
  const usable=modules.filter(m=>!m.missing);
- for(const m of usable){const a=link(parent,'module='+m.id,'Ouvrir '+m.name,'btn');a.onclick=()=>{sessionReturn='session='+s.id;moduleFocus={classId:s.classId,sessionId:s.id}}}
+ for(const m of usable){const a=link(parent,'module='+m.id,'Ouvrir '+m.name,'btn');a.onclick=e=>{e.preventDefault();useModule(s,m)}}
+}
+// Bloc « Modules de la séance » de la fiche séance
+function sessionModulesPanel(s){
+ const usable=modules.filter(m=>!m.missing);if(!usable.length||s.cancelled)return;
+ const used=usedModules(s);
+ const p=panel(view,'Modules de la séance');
+ el('p',used.length?'Les résultats de ces modules sont importés dans cette séance.':'Choisissez un module à utiliser : tout ce qu’il renvoie (notes, résultats, résumé) sera importé dans cette séance.',p,'muted');
+ const grid=el('div','',p,'module-choice');
+ for(const m of usable){
+  const on=used.includes(m.id),n=data.results.filter(r=>r.sessionId===s.id&&r.module===m.name&&r.student).length;
+  const b=el('button','',grid,'module-card'+(on?' on':''));b.type='button';
+  icon('modules',el('span','',b,'avatar'));
+  const t=el('span','',b,'body');el('span',m.name,t,'title');el('span',on?(n?plural(n,'résultat')+' importé'+(n>1?'s':''):'Utilisé dans cette séance'):(m.description||'Ouvrir le module'),t,'meta');
+  el('span',on?'Ouvrir':'Utiliser',b,'tag'+(on?' now':''));
+  b.onclick=()=>useModule(s,m);
+ }
 }
 function renderModulesSettings(){
  const p=panel(view,'Modules');

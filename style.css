@@ -311,6 +311,15 @@ body.module-mode #view{gap:10px}
 .module-summary{display:flex;flex-direction:column;gap:6px}
 .module-summary .row{background:#f1f6e6}
 
+/* ---------- Appel rapide et modules de la séance ---------- */
+.quick-call .actions button{min-width:110px}
+.module-choice{display:grid;gap:10px;grid-template-columns:repeat(auto-fill,minmax(min(280px,100%),1fr))}
+.module-card{justify-content:flex-start;gap:12px;min-height:72px;padding:10px 14px;border-color:var(--line);color:var(--ink);text-align:left;font-weight:500}
+.module-card .body{display:flex;flex-direction:column;gap:2px;flex:1;min-width:0}
+.module-card .title{font-weight:700}
+.module-card .meta{font-size:13px;color:var(--muted);white-space:normal}
+.module-card.on{border:2px solid var(--primary);background:#f1f6e6}
+
 /* ---------- Tablette portrait ---------- */
 @media (max-width:1023px){
   .sidebar{width:212px;padding-inline:10px}
